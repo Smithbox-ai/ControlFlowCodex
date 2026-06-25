@@ -1,13 +1,46 @@
 # ControlFlow for Codex
 
-**Version:** 1.0.0
+> A slim planning-quality plugin for native Codex: durable plans, adversarial
+> verification, and plan-aware review — without duplicating what Codex already does.
 
-A slim planning-quality plugin for native Codex: **3 skills, 0 subagents**. It keeps
-the ControlFlow plan format and adversarial evidence discipline without duplicating
-native Codex execution features.
+**3 skills, 0 subagents.** The plugin keeps the ControlFlow plan format, tier-gated
+semantic-risk review, and evidence discipline, then hands execution back to native
+Codex. It installs no router, runtime policy, approval engine, retry scheduler, or
+custom subagents.
 
-This repository is the standalone home of the ControlFlow-for-Codex plugin,
-extracted from the ControlFlow governance/eval repo.
+This repository is the standalone home of the ControlFlow-for-Codex plugin.
+
+## How it fits with native Codex
+
+```mermaid
+flowchart TD
+    A["Clarify the task<br/>native <code>/plan</code>"] --> B["$controlflow-plan<br/>save a durable, risk-reviewed plan"]
+    B --> C["$controlflow-verify<br/>inline adversarial check"]
+    C --> D{"Verdict?"}
+    D -->|"NEEDS_REVISION / REJECTED"| B
+    D -->|"APPROVED"| E["Native Codex executes<br/>tools · sandbox · approvals · subagents"]
+    E --> F["native <code>/review</code><br/>general code review"]
+    F --> G["$controlflow-review<br/>plan conformance + evidence"]
+    G --> H["Done"]
+```
+
+## What the plugin owns vs. what Codex owns
+
+```mermaid
+flowchart LR
+    subgraph Plugin["ControlFlow plugin adds"]
+        P1["Plan-format contract<br/>+ semantic-risk review"]
+        P2["Inline adversarial verify<br/>structure · mirages · cold-start"]
+        P3["Plan-conformance review<br/>scope drift · evidence"]
+    end
+    subgraph Codex["Native Codex keeps"]
+        C1["Plan mode · clarification"]
+        C2["Execution · sandbox · approvals"]
+        C3["Subagents · lifecycle"]
+        C4["Generic <code>/review</code> · memories"]
+    end
+    Plugin -. "layers over" .-> Codex
+```
 
 ## Skills
 
@@ -17,48 +50,12 @@ extracted from the ControlFlow governance/eval repo.
 | `$controlflow-verify` | Verify the saved plan inline: structure, mirages, and cold-start executability |
 | `$controlflow-review` | Compare implementation and test evidence with the approved plan |
 
-Each skill is a single self-contained `SKILL.md` (references inlined), plus an
-optional `agents/openai.yaml` for host UI metadata. There are no reference files
-and no subagents.
-
-## What Remains Native Codex
-
-| Concern | Owner |
-| --- | --- |
-| Conversational planning and clarification | Native `/plan` and direct questions |
-| Live task state and execution | Native Codex |
-| Sandbox and approvals | Native Codex security controls |
-| Subagent spawning and lifecycle | Native Codex, only when explicitly requested |
-| General mechanical code review | Native `/review` |
-| Memories and context continuity | Native Codex memories and threads |
-
-The plugin does not install a router, spec workflow, orchestration engine, retry
-policy, approval layer, memory layer, or custom runtime subagents.
-
-## Why the Three Skills Still Matter
-
-- Native Plan mode does not impose this durable plan artifact and semantic-risk
-  contract.
-- `$controlflow-verify` adversarially checks a saved plan before code changes start.
-- `$controlflow-review` checks scope drift and acceptance evidence that generic
-  diff review cannot infer without the approved plan.
-- The bundled plan-format fallback keeps the plugin usable outside a host repo.
+Each skill is a single self-contained `SKILL.md` (references inlined), plus an optional
+`agents/openai.yaml` for host UI metadata. There are no reference files and no subagents.
 
 When the active repository contains `schemas/planner.plan.schema.json` and
-`plans/templates/plan-document-template.md`, those files override the bundled
+`plans/templates/plan-document-template.md`, those files override the bundled plan-format
 fallback.
-
-## Recommended Flow
-
-1. Use native `/plan` when the task needs clarification.
-2. Invoke `$controlflow-plan` to save the durable artifact.
-3. Invoke `$controlflow-verify`; do not implement until it returns `APPROVED`.
-4. Let native Codex execute the plan with its normal tools, sandbox, approvals,
-   and optional subagents.
-5. Run native `/review` for the general code-review pass.
-6. Invoke `$controlflow-review` for plan conformance and residual evidence gaps.
-
-For trivial work, use native Codex directly.
 
 ## Installation
 
@@ -66,19 +63,20 @@ For trivial work, use native Codex directly.
 powershell -ExecutionPolicy Bypass -File scripts/install.ps1
 ```
 
-Use `-Force` to replace an existing local installation. To remove:
+Use `-Force` to replace an existing installation. To remove:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/install.ps1 -Uninstall -Force
 ```
 
-This installs into `$HOME/plugins/controlflow-codex` and registers a local
+This copies the plugin into `$HOME/plugins/controlflow-codex` and registers a local
 marketplace entry at `$HOME/.agents/plugins/marketplace.json`.
 
-## Deterministic Validator
+## Deterministic validator
 
-The package keeps a slim validator for plan structure and the combined verify
-verdict. It is the only executable logic in the plugin.
+`scripts/validate-plan.ps1` is the only executable logic in the plugin. It checks the
+plan header, required sections, lifecycle heading order, the seven semantic-risk rows
+(each exactly once), and (with `-RequireVerifyVerdict`) the `verify-verdict.md` shape.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/validate-plan.ps1 `
@@ -87,21 +85,23 @@ powershell -ExecutionPolicy Bypass -File scripts/validate-plan.ps1 `
   -RequireVerifyVerdict
 ```
 
-It checks the plan header, required sections, lifecycle heading order, the seven
-semantic-risk rows (each exactly once), and (with `-RequireVerifyVerdict`) the
-`verify-verdict.md` shape and status.
+## When you don't need it
 
-## Использование (кратко)
+For an obvious one- or two-file change, use native Codex directly — no plan artifact,
+no verify, no review. The `TRIVIAL` tier exists exactly for this.
 
-1. Для неясной задачи сначала нативный `/plan`.
-2. `$controlflow-plan` — сохранить строгий план.
-3. `$controlflow-verify` — проверить план до реализации.
-4. После `APPROVED` пусть Codex выполнит план нативно.
-5. Нативный `/review` для общего code review.
-6. `$controlflow-review` — соответствие плану.
+## Repository layout
 
-Для очевидной правки в одном-двух файлах используйте обычный Codex без
-дополнительных артефактов.
+```
+.codex-plugin/plugin.json        plugin manifest
+assets/controlflow-codex-logo.svg logo
+skills/controlflow-plan/          $controlflow-plan  (SKILL.md + agents/openai.yaml)
+skills/controlflow-verify/        $controlflow-verify
+skills/controlflow-review/        $controlflow-review
+scripts/install.ps1               install / -Uninstall
+scripts/validate-plan.ps1         plan-format + verify-verdict validator
+README.md · CHANGELOG.md · LICENSE
+```
 
 ## License
 
