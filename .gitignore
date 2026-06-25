@@ -1,0 +1,6 @@
+.vs/
+*.user
+.cache/
+node_modules/
+Thumbs.db
+*.tmp

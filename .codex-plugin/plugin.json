@@ -1,0 +1,47 @@
+{
+  "name": "controlflow-codex",
+  "version": "1.0.0",
+  "description": "Lightweight ControlFlow for native Codex: durable plan generation, inline adversarial plan verification, and plan-aware evidence review. 3 skills, 0 subagents.",
+  "author": {
+    "name": "Smithbox-ai",
+    "url": "https://github.com/Smithbox-ai/ControlFlowCodex"
+  },
+  "homepage": "https://github.com/Smithbox-ai/ControlFlowCodex",
+  "repository": "https://github.com/Smithbox-ai/ControlFlowCodex",
+  "license": "MIT",
+  "keywords": [
+    "controlflow",
+    "codex",
+    "planning",
+    "plan-verification",
+    "adversarial-verification",
+    "review",
+    "evidence-backed",
+    "standalone"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "ControlFlow for Codex",
+    "shortDescription": "Plan, verify, and review without duplicating native Codex",
+    "longDescription": "Preserves the useful ControlFlow layer on top of native Codex: durable schema-compatible plans with a standalone fallback, inline adversarial verification, and plan-aware evidence review. Codex keeps ownership of Plan mode, execution, approvals, sandboxing, subagents, generic review, and memories.",
+    "developerName": "Smithbox-ai",
+    "category": "Coding",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/Smithbox-ai/ControlFlowCodex",
+    "privacyPolicyURL": "https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement",
+    "termsOfServiceURL": "https://docs.github.com/en/site-policy/github-terms/github-terms-of-service",
+    "defaultPrompt": [
+      "Use $controlflow-plan to create a durable plan for this non-trivial repository task.",
+      "Use $controlflow-verify to adversarially verify this saved plan before implementation.",
+      "Use $controlflow-review to compare this implementation with the approved plan."
+    ],
+    "brandColor": "#0F766E",
+    "composerIcon": "./assets/controlflow-codex-logo.svg",
+    "logo": "./assets/controlflow-codex-logo.svg",
+    "screenshots": []
+  }
+}

@@ -1,0 +1,7 @@
+interface:
+  display_name: "ControlFlow Plan"
+  short_description: "Write a durable, risk-reviewed ControlFlow plan"
+  default_prompt: "Use $controlflow-plan to create a saved ControlFlow plan for this repository task."
+
+policy:
+  allow_implicit_invocation: true

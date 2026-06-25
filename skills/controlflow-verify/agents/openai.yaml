@@ -1,0 +1,7 @@
+interface:
+  display_name: "ControlFlow Verify"
+  short_description: "Adversarially verify a saved plan before coding"
+  default_prompt: "Use $controlflow-verify to verify this saved ControlFlow plan before implementation."
+
+policy:
+  allow_implicit_invocation: false
