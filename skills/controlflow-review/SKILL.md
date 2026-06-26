@@ -37,6 +37,17 @@ value, and new dependencies an already-installed dependency or platform primitiv
 covers. Treat over-engineering as a maintainability signal; block only when it
 creates real review, behavior, test, dependency, or operability risk.
 
+### Documentation and Comment Pass
+
+Verify that changed code includes XML documentation and business-logic comments
+where it introduces or changes business-significant APIs, rules, invariants,
+exceptions, compliance constraints, calculations, or rationale. The documentation
+and comments must use the dominant local language unless the user explicitly
+requested a different language. Flag missing or mismatched documentation when it
+can obscure business behavior, public contracts, or maintenance-critical intent.
+Also flag any speculative abstraction added without concrete duplication, a real
+boundary, or an established local pattern.
+
 ### Stop-the-Line Decision Points
 
 Halt for security, authorization, secret-handling, destructive-action, or

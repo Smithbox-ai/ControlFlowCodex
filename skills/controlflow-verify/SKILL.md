@@ -58,6 +58,13 @@ Apply this stance to every phase; inline verification risks confirmation bias.
 8. The first phases can start without hidden context.
 9. Every requested outcome is implemented by a phase.
 10. Security, access-control, and operability risks have proportional gates.
+11. Every code-writing phase shows that each new abstraction is justified by
+    concrete duplication, a real boundary, or an established local pattern; if a
+    new abstraction is justified only by possible future use, require revision.
+12. Every code-writing phase plans XML documentation and business-logic comments
+    for business-significant APIs, rules, invariants, exceptions, calculations,
+    and rationale, using the dominant local language unless the user explicitly
+    requested another language.
 
 ## Phase 2 - Assumption and Mirage Check
 
@@ -84,7 +91,8 @@ classification, and required correction.
 For the first relevant phases confirm: what is being changed; exact location;
 approach and preserved behavior; required inputs; expected outputs; dependencies;
 runnable verification command; concrete test behavior. Simulate opening the file,
-reading the existing pattern, writing a failing test, running it, implementing the
+reading the existing pattern, choosing the dominant local language for
+documentation and comments, writing a failing test, running it, implementing the
 minimum change, rerunning tests, and refactoring. Stop at the first hard blocker
 and record it.
 

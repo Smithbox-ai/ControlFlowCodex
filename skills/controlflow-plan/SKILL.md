@@ -172,6 +172,32 @@ existing project behavior; the standard library or native platform; an
 already-installed dependency; one localized line or existing helper. Only then
 write new machinery.
 
+### No Speculative Abstractions
+
+- Do not introduce a new class, interface, factory, provider, wrapper, options
+  model, extension point, or generic helper only because it might be useful
+  later.
+- Add a new abstraction only when it removes concrete repeated logic, isolates a
+  real policy or integration boundary, or matches an established local pattern.
+- A phase that adds an abstraction must name the existing duplication, boundary,
+  or local precedent that justifies it. Otherwise keep the change inline or use a
+  localized helper.
+
+### Context Language Rule
+
+- Unless the user explicitly requests a documentation or comment language, infer
+  the dominant local language from the nearest context: same member, same class,
+  same file, then neighboring files in the same feature area.
+- Use that language for XML documentation, doc comments, inline comments, and
+  business-logic comments. If the nearest context is mixed, prefer the language
+  that dominates the class or file being edited.
+- When writing C#/.NET or another ecosystem that supports XML documentation, add
+  XML documentation to new or materially changed business-significant APIs and
+  members. Preserve the local XML style, tag set, and level of detail.
+- Add business-logic comments for non-obvious rules, invariants, exceptions,
+  compliance constraints, calculations, and rationale. Do not comment obvious
+  syntax or repeat names.
+
 ### Anti-Rationalization
 
 - Assume a missing requirement -> ask if it changes scope; otherwise record a
@@ -190,8 +216,8 @@ write new machinery.
 
 - Document non-obvious business rules, invariants, exceptions, constraints, and
   rationale.
-- Use ecosystem-native API documentation only when the contract needs it; match
-  the nearest documentation language and style.
+- Use ecosystem-native API documentation when the contract or changed API carries
+  business meaning; match the nearest documentation language and style.
 - Do not add comments by quota or narrate obvious syntax.
 
 ## Native Host Boundary

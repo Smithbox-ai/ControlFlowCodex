@@ -4,6 +4,20 @@ All notable changes to the ControlFlow for Codex plugin are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Contract test covering coding-behavior guardrails for abstraction,
+  documentation, and business-logic comments.
+
+### Changed
+
+- Strengthened ControlFlow planning, verification, and review guidance to reject
+  speculative abstractions and require XML documentation plus business-logic
+  comments in the dominant local language unless the user specifies another
+  language.
+
 ## [1.0.0] - 2026-06-25
 
 ### Added
