@@ -46,6 +46,19 @@ restartability discipline. Invoke it explicitly with `$controlflow-plan`.
 9. `## Handoff`
 10. `## Notes for Execution`
 
+### Feedback Loop Contract
+
+Every non-abstaining plan must preserve the user feedback loop before execution:
+
+- Include a `Goal Statement` in `## Context & Analysis` that restates the
+  user-facing outcome in one or two concrete sentences.
+- If the goal, constraints, success threshold, or allowed scope is ambiguous,
+  ask clarifying questions before marking the plan `READY_FOR_EXECUTION`, or use
+  `ABSTAIN`/`REPLAN_REQUIRED` and record the blocker under `## Open Questions`.
+- `## Success Criteria` must tie directly back to the `Goal Statement`, and
+  Success Criteria must be measurable enough for verification and review to
+  decide whether the goal was achieved.
+
 ### Phase Shape
 
 Each phase includes:
@@ -138,7 +151,9 @@ Override: any unresolved semantic risk with `applicability: applicable` and
 9. Add compact Mermaid diagrams when required by the contract.
 10. Use `ABSTAIN` or `REPLAN_REQUIRED` when evidence is insufficient or
     confidence is below the contract threshold.
-11. Hand every non-trivial ready plan to `$controlflow-verify` before
+11. Apply the Feedback Loop Contract: state the goal, ask clarifying questions
+    when required, and keep success criteria measurable.
+12. Hand every non-trivial ready plan to `$controlflow-verify` before
     implementation.
 
 ## Execution Deltas

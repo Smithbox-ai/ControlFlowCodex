@@ -65,6 +65,9 @@ Apply this stance to every phase; inline verification risks confirmation bias.
     for business-significant APIs, rules, invariants, exceptions, calculations,
     and rationale, using the dominant local language unless the user explicitly
     requested another language.
+13. The plan includes a user-facing goal statement, no unresolved clarifying
+    questions that block execution, and success criteria are measurable enough to
+    prove whether that goal was achieved.
 
 ## Phase 2 - Assumption and Mirage Check
 

@@ -55,6 +55,14 @@ data-integrity defects; failed core behavior or acceptance criteria;
 migration/schema/contract changes without rollback or compatibility evidence; or
 scope drift that prevents comparison to the approved plan.
 
+### Feedback Loop Closure
+
+Close the feedback loop by comparing the implementation, tests, and stated
+evidence with the approved goal and success criteria. If the result cannot show
+that the user-facing goal was reached, or if criteria changed without an approved
+plan update, treat that as scope drift or a validation gap rather than a completed
+handoff.
+
 ### Out-of-Scope Reconciliation
 
 Compare every aggregate changed path and behavior to the approved phases.

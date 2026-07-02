@@ -10,11 +10,15 @@ custom subagents.
 
 This repository is the standalone home of the ControlFlow-for-Codex plugin.
 
+The core feedback loop is: clarify uncertain context, state the user-facing goal,
+define measurable success criteria, verify that the plan is executable, execute in
+native Codex, and review the final evidence against the approved goal and criteria.
+
 ## How it fits with native Codex
 
 ```mermaid
 flowchart TD
-    A["Clarify the task<br/>native <code>/plan</code>"] --> B["$controlflow-plan<br/>save a durable, risk-reviewed plan"]
+    A["Clarify the task<br/>native <code>/plan</code>"] --> B["$controlflow-plan<br/>goal + measurable criteria"]
     B --> C["$controlflow-verify<br/>inline adversarial check"]
     C --> D{"Verdict?"}
     D -->|"NEEDS_REVISION / REJECTED"| B
