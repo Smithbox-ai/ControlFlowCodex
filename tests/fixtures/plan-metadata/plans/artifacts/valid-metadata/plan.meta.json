@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0.0",
+  "plan_path": "plans/valid-metadata-plan.md",
+  "goal": "Keep the fixture plan structurally valid.",
+  "complexity_tier": "SMALL",
+  "phases": [
+    {
+      "id": "1",
+      "objective": "Validate a compact metadata fixture.",
+      "dependencies": [],
+      "files": [
+        "scripts/validate-plan.ps1"
+      ],
+      "commands": [
+        "powershell -ExecutionPolicy Bypass -File scripts\\validate-plan.ps1"
+      ],
+      "success_criteria": [
+        "Metadata validation passes for this fixture."
+      ]
+    }
+  ],
+  "semantic_risks": [
+    { "category": "data_volume", "applicability": "not_applicable", "impact": "LOW" },
+    { "category": "performance", "applicability": "not_applicable", "impact": "LOW" },
+    { "category": "concurrency", "applicability": "not_applicable", "impact": "LOW" },
+    { "category": "access_control", "applicability": "not_applicable", "impact": "LOW" },
+    { "category": "migration_rollback", "applicability": "not_applicable", "impact": "LOW" },
+    { "category": "dependency", "applicability": "not_applicable", "impact": "LOW" },
+    { "category": "operability", "applicability": "applicable", "impact": "LOW" }
+  ],
+  "success_criteria": [
+    "Metadata validation passes for this fixture."
+  ]
+}

@@ -26,7 +26,7 @@ $pluginName = "controlflow-codex"
 $sourceRoot = Split-Path -Parent $PSScriptRoot
 $targetPluginsDir = Join-Path $HomeRoot "plugins"
 $targetPlugin = Join-Path $targetPluginsDir $pluginName
-$marketplaceDir = Join-Path $HomeRoot ".agents\plugins"
+$marketplaceDir = Join-Path (Join-Path $HomeRoot ".agents") "plugins"
 $marketplacePath = Join-Path $marketplaceDir "marketplace.json"
 
 if ($Uninstall) {

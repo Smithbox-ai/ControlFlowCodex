@@ -82,10 +82,24 @@ marketplace entry at `$HOME/.agents/plugins/marketplace.json`.
 plan header, required sections, lifecycle heading order, the seven semantic-risk rows
 (each exactly once), and (with `-RequireVerifyVerdict`) the `verify-verdict.md` shape.
 
+## Structured plan metadata
+
+Every new non-trivial ControlFlow plan can pair its Markdown artifact with
+`plans/artifacts/<task>/plan.meta.json`. The bundled
+`schemas/plan-meta.schema.json` defines the portable sidecar format: goal, tier,
+phases, dependencies, planned files, commands, semantic risks, and success
+criteria. Markdown remains the human-readable plan; metadata enables deterministic
+validation and future plan-aware comparison without adding a runtime service.
+
+Use `-RequirePlanMetadata` to validate the sidecar and its synchronization with
+the Markdown goal, tier, and phase IDs. The option is intentionally opt-in so
+existing Markdown-only plans remain supported.
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/validate-plan.ps1 `
   -RepoRoot . `
   -PlanPath plans/my-task-plan.md `
+  -RequirePlanMetadata `
   -RequireVerifyVerdict
 ```
 
@@ -103,7 +117,8 @@ skills/controlflow-plan/          $controlflow-plan  (SKILL.md + agents/openai.y
 skills/controlflow-verify/        $controlflow-verify
 skills/controlflow-review/        $controlflow-review
 scripts/install.ps1               install / -Uninstall
-scripts/validate-plan.ps1         plan-format + verify-verdict validator
+scripts/validate-plan.ps1         plan-format + metadata + verify-verdict validator
+schemas/plan-meta.schema.json     structured plan-sidecar contract
 README.md · CHANGELOG.md · LICENSE
 ```
 

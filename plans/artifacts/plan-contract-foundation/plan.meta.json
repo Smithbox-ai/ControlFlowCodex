@@ -1,0 +1,71 @@
+{
+  "schema_version": "1.0.0",
+  "plan_path": "plans/plan-contract-foundation-plan.md",
+  "goal": "Turn the existing Markdown-only plan contract into an artifact-first, deterministically verifiable workflow. A plan remains readable Markdown, but it gains a validated JSON sidecar and reliable test/CI evidence without introducing an orchestration runtime, subagents, or mandatory runtime dependencies.",
+  "complexity_tier": "MEDIUM",
+  "phases": [
+    {
+      "id": "1",
+      "objective": "Define the sidecar's public JSON contract and create failing validation checks before changing production validation.",
+      "dependencies": [],
+      "files": ["schemas/plan-meta.schema.json", "tests/validate-plan.tests.ps1"],
+      "commands": ["powershell -ExecutionPolicy Bypass -File tests\\validate-plan.tests.ps1"],
+      "success_criteria": ["The new test fails against the current validator because it does not recognize the metadata requirement switch."]
+    },
+    {
+      "id": "2",
+      "objective": "Extend the existing validator to require and cross-check a valid sidecar when requested.",
+      "dependencies": ["1"],
+      "files": ["scripts/validate-plan.ps1", "tests/validate-plan.tests.ps1"],
+      "commands": ["powershell -ExecutionPolicy Bypass -File tests\\validate-plan.tests.ps1"],
+      "success_criteria": ["A valid metadata sidecar passes with -RequirePlanMetadata."]
+    },
+    {
+      "id": "3",
+      "objective": "Add representative human-readable plans with matching structured metadata and approved verifier artifacts.",
+      "dependencies": ["2"],
+      "files": ["plans/examples/bugfix-plan.md", "plans/artifacts/bugfix/plan.meta.json"],
+      "commands": ["powershell -ExecutionPolicy Bypass -File tests\\validate-plan.tests.ps1"],
+      "success_criteria": ["Each of the five plan types has Markdown, a sidecar, and an approved verifier verdict."]
+    },
+    {
+      "id": "4",
+      "objective": "Teach the planner, verifier, reviewer, and public documentation to use the artifact-first contract.",
+      "dependencies": ["3"],
+      "files": ["skills/controlflow-plan/SKILL.md", "skills/controlflow-verify/SKILL.md", "skills/controlflow-review/SKILL.md", "README.md"],
+      "commands": ["powershell -ExecutionPolicy Bypass -File tests\\controlflow-skill-contract.tests.ps1"],
+      "success_criteria": ["The three skills describe a compatible plan to metadata to verify to review lifecycle."]
+    },
+    {
+      "id": "5",
+      "objective": "Make the portable checks observable through Pester and run the complete contract across supported GitHub-hosted operating systems.",
+      "dependencies": ["2", "3", "4"],
+      "files": ["tests/controlflow-contract.Tests.ps1", "tests/run-contract-tests.ps1", ".github/workflows/ci.yml"],
+      "commands": ["powershell -ExecutionPolicy Bypass -File tests\\run-contract-tests.ps1 -UsePester"],
+      "success_criteria": ["CI installs a current Pester release and passes the same tests on all three runner OSs."]
+    },
+    {
+      "id": "6",
+      "objective": "Produce evidence that the implementation meets the approved goal and update this living plan.",
+      "dependencies": ["1", "2", "3", "4", "5"],
+      "files": ["plans/artifacts/plan-contract-foundation/verify-verdict.md", "plans/plan-contract-foundation-plan.md"],
+      "commands": ["powershell -ExecutionPolicy Bypass -File tests\\run-contract-tests.ps1 -UsePester", "git diff --check"],
+      "success_criteria": ["All portable, Pester, validator, golden-example, and installer smoke tests pass."]
+    }
+  ],
+  "semantic_risks": [
+    {"category": "data_volume", "applicability": "not_applicable", "impact": "LOW"},
+    {"category": "performance", "applicability": "applicable", "impact": "LOW"},
+    {"category": "concurrency", "applicability": "not_applicable", "impact": "LOW"},
+    {"category": "access_control", "applicability": "applicable", "impact": "MEDIUM"},
+    {"category": "migration_rollback", "applicability": "applicable", "impact": "MEDIUM"},
+    {"category": "dependency", "applicability": "applicable", "impact": "MEDIUM"},
+    {"category": "operability", "applicability": "applicable", "impact": "HIGH"}
+  ],
+  "success_criteria": [
+    "A Markdown plan can have a matching plans/artifacts/<task>/plan.meta.json sidecar that records goal, tier, phases, dependencies, files, commands, risks, and criteria.",
+    "schemas/plan-meta.schema.json and scripts/validate-plan.ps1 -RequirePlanMetadata enforce the published metadata contract without external runtime dependencies.",
+    "Five representative Markdown-plus-sidecar examples and their verifier verdicts pass the public validator.",
+    "The repository provides both a standalone PowerShell test entry point and Pester coverage, and CI runs them plus installer smoke testing on Ubuntu, Windows, and macOS."
+  ]
+}

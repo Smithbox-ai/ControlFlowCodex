@@ -14,6 +14,11 @@ and cold-start executability. Invoke it explicitly with `$controlflow-verify`.
 ## Input and Contract
 
 - Read the plan from disk; do not verify a chat copy.
+- Read `plans/artifacts/<task>/plan.meta.json` when it is present and reconcile
+  its goal, tier, phase IDs, dependencies, planned files, commands, risks, and
+  criteria with the Markdown plan. A missing sidecar for a newly created
+  non-trivial plan is `uncertain`; legacy Markdown-only plans remain valid when
+  the approved contract did not require metadata.
 - Use the active repository's schema and template when present, otherwise the
   bundled `controlflow-plan` format.
 
@@ -108,6 +113,21 @@ and record it.
   non-approval.
 - Write a compact verdict to `plans/artifacts/<task-slug>/verify-verdict.md`.
 - Do not start implementation until the verdict is `APPROVED`.
+
+### Required Verdict Detail
+
+Every saved verdict includes these sections after findings:
+
+1. `## Score Breakdown` with completeness, executability, dependency sanity,
+   evidence readiness, and risk handling scores or confidence bands.
+2. `## Revision Patch Instructions` with the section or metadata field to change,
+   the missing or incorrect content, and severity. For `APPROVED`, state that no
+   revision is required.
+3. `## Evidence` and `## Recommendation` that distinguish inspected files and
+   command output from inference.
+
+The score is a transparent verifier rubric, not a replacement for native Codex
+approval, execution, sandbox, or review decisions.
 
 ## Native Host Boundary
 

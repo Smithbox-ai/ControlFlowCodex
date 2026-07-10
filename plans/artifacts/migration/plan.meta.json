@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0.0",
+  "plan_path": "plans/examples/migration-plan.md",
+  "goal": "Add optional metadata validation without invalidating existing Markdown-only plans.",
+  "complexity_tier": "MEDIUM",
+  "phases": [{"id": "1", "objective": "Validate the sidecar only when the caller requests it and retain the legacy command path.", "dependencies": [], "files": ["scripts/validate-plan.ps1", "schemas/plan-meta.schema.json"], "commands": ["powershell -ExecutionPolicy Bypass -File tests\\validate-plan.tests.ps1"], "success_criteria": ["Legacy validation succeeds while metadata validation is opt-in."]}],
+  "semantic_risks": [
+    {"category": "data_volume", "applicability": "not_applicable", "impact": "LOW"},
+    {"category": "performance", "applicability": "not_applicable", "impact": "LOW"},
+    {"category": "concurrency", "applicability": "not_applicable", "impact": "LOW"},
+    {"category": "access_control", "applicability": "not_applicable", "impact": "LOW"},
+    {"category": "migration_rollback", "applicability": "applicable", "impact": "MEDIUM"},
+    {"category": "dependency", "applicability": "not_applicable", "impact": "LOW"},
+    {"category": "operability", "applicability": "applicable", "impact": "MEDIUM"}
+  ],
+  "success_criteria": ["Legacy validation succeeds while metadata validation is opt-in."]
+}

@@ -15,7 +15,8 @@ pass; consume its results rather than repeating them. Invoke it explicitly with
 
 ## Local Contract
 
-- Read the approved plan and aggregate diff.
+- Read the approved plan, its `plans/artifacts/<task>/plan.meta.json` sidecar
+  when present, and the aggregate diff.
 - If native review results are available, consume them rather than repeating the
   same mechanical/style pass.
 - Findings come first, ordered by severity, with file/line evidence and
@@ -67,7 +68,9 @@ handoff.
 
 Compare every aggregate changed path and behavior to the approved phases.
 Classify each difference as approved follow-through, justified deviation, or
-blocking scope drift.
+blocking scope drift. When metadata is present, compare changed paths with its
+planned paths and compare final evidence with its structured success criteria;
+record any Markdown-to-metadata mismatch as a validation gap.
 
 ### Novelty Filter
 
