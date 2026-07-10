@@ -10,6 +10,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Contract test covering coding-behavior guardrails for abstraction,
   documentation, and business-logic comments.
+- `schemas/plan-meta.schema.json`, metadata validation, five golden plan
+  examples, and verifier verdict examples for artifact-first planning.
+- Pester-compatible contract-test entry points and cross-platform CI coverage.
 
 ### Changed
 
@@ -17,6 +20,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   speculative abstractions and require XML documentation plus business-logic
   comments in the dominant local language unless the user specifies another
   language.
+- Non-trivial plans can now pair Markdown with
+  `plans/artifacts/<task>/plan.meta.json`; verifier verdicts include a score
+  breakdown and revision patch instructions.
 
 ## [1.0.0] - 2026-06-25
 

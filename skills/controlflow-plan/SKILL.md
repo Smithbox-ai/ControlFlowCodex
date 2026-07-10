@@ -19,7 +19,22 @@ restartability discipline. Invoke it explicitly with `$controlflow-plan`.
    authoritative.
 2. Otherwise use the bundled standalone format below.
 3. If repository canonical files conflict with the bundled fallback, repository
-   files win and the difference must be noted under `## Discoveries`.
+files win and the difference must be noted under `## Discoveries`.
+
+## Artifact-First Output
+
+For every non-trivial plan that is ready for execution, produce two aligned
+artifacts:
+
+- Artifact A: `plans/<task>-plan.md`
+- Artifact B: `plans/artifacts/<task>/plan.meta.json`
+
+Artifact B uses the bundled `schemas/plan-meta.schema.json` contract. It records
+the exact plan path, user-facing goal, complexity tier, phases, dependencies,
+planned files, commands, semantic risks, and success criteria. Markdown remains
+the human-facing source of reasoning and evidence; the sidecar is the structured
+projection used for deterministic validation and later comparison. Keep the goal,
+tier, and phase IDs synchronized between both artifacts.
 
 ## Bundled Plan Format
 
@@ -138,7 +153,8 @@ Override: any unresolved semantic risk with `applicability: applicable` and
    from assumptions.
 2. Create a saved plan for `SMALL`, `MEDIUM`, or `LARGE` work; skip it for truly
    `TRIVIAL` work unless the user explicitly requests an artifact.
-3. Save to `plans/<task-slug>-plan.md` unless the user names another path.
+3. Save Artifact A to `plans/<task-slug>-plan.md` unless the user names another
+   path, and save Artifact B to `plans/artifacts/<task-slug>/plan.meta.json`.
 4. Map concrete files, tests, commands, dependencies, boundaries, and existing
    patterns.
 5. Assign one tier (see Complexity Tiers). Any unresolved applicable `HIGH`
@@ -153,7 +169,9 @@ Override: any unresolved semantic risk with `applicability: applicable` and
     confidence is below the contract threshold.
 11. Apply the Feedback Loop Contract: state the goal, ask clarifying questions
     when required, and keep success criteria measurable.
-12. Hand every non-trivial ready plan to `$controlflow-verify` before
+12. Run the deterministic metadata check when the bundled validator is available:
+    `scripts/validate-plan.ps1 -RepoRoot . -PlanPath plans/<task-slug>-plan.md -RequirePlanMetadata`.
+13. Hand every non-trivial ready plan to `$controlflow-verify` before
     implementation.
 
 ## Execution Deltas
