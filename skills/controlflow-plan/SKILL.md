@@ -36,6 +36,25 @@ the human-facing source of reasoning and evidence; the sidecar is the structured
 projection used for deterministic validation and later comparison. Keep the goal,
 tier, and phase IDs synchronized between both artifacts.
 
+## Template Library
+
+For an unambiguous task, start from the matching pair in `plans/templates/`:
+
+| Task type | Markdown template | Metadata template |
+| --- | --- | --- |
+| bugfix | `bugfix-plan-template.md` | `bugfix-plan-template.meta.json` |
+| refactor | `refactor-plan-template.md` | `refactor-plan-template.meta.json` |
+| migration | `migration-plan-template.md` | `migration-plan-template.meta.json` |
+| feature | `feature-plan-template.md` | `feature-plan-template.meta.json` |
+| docs or test only | `docs-test-only-plan-template.md` | `docs-test-only-plan-template.meta.json` |
+
+Copy the matching pair into the task plan and artifact locations, then replace
+every authoring marker with verified repository evidence, exact commands, and
+measurable criteria. Templates are starting structure, not completed plans; run
+the normal sidecar and verdict validation only after grounding them. If the task
+type is ambiguous or the choice changes scope or safety, ask a clarifying
+question; do not select a template speculatively.
+
 ## Bundled Plan Format
 
 ### Header

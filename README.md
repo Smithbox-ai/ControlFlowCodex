@@ -95,6 +95,18 @@ Use `-RequirePlanMetadata` to validate the sidecar and its synchronization with
 the Markdown goal, tier, and phase IDs. The option is intentionally opt-in so
 existing Markdown-only plans remain supported.
 
+## Plan templates
+
+`plans/templates/` contains paired Markdown and JSON skeletons for `bugfix`,
+`refactor`, `migration`, `feature`, and `docs-test-only` work. They are not
+validated execution plans: copy the relevant pair, replace every authoring
+marker with verified repository evidence and exact commands, then save the
+grounded artifacts under the normal `plans/` and `plans/artifacts/` locations.
+
+Choose a template only when the task type is clear. When the choice affects
+scope, rollback, or safety, clarify first instead of treating a template as an
+automatic planner or runtime mechanism.
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/validate-plan.ps1 `
   -RepoRoot . `
