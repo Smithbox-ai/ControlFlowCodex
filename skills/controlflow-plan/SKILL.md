@@ -190,7 +190,11 @@ Override: any unresolved semantic risk with `applicability: applicable` and
     when required, and keep success criteria measurable.
 12. Run the deterministic metadata check when the bundled validator is available:
     `scripts/validate-plan.ps1 -RepoRoot . -PlanPath plans/<task-slug>-plan.md -RequirePlanMetadata`.
-13. Hand every non-trivial ready plan to `$controlflow-verify` before
+13. Run `scripts/score-plan.ps1 -RepoRoot . -PlanPath
+    plans/<task-slug>-plan.md` when available and retain its JSON output as
+    reproducible plan evidence. The scorer reads plan artifacts only and does
+    not execute declared plan commands.
+14. Hand every non-trivial ready plan to `$controlflow-verify` before
     implementation.
 
 ## Execution Deltas

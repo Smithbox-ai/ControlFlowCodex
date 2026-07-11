@@ -78,9 +78,9 @@ marketplace entry at `$HOME/.agents/plugins/marketplace.json`.
 
 ## Deterministic validator
 
-`scripts/validate-plan.ps1` is the only executable logic in the plugin. It checks the
-plan header, required sections, lifecycle heading order, the seven semantic-risk rows
-(each exactly once), and (with `-RequireVerifyVerdict`) the `verify-verdict.md` shape.
+`scripts/validate-plan.ps1` checks the plan header, required sections, lifecycle
+heading order, the seven semantic-risk rows (each exactly once), and (with
+`-RequireVerifyVerdict`) the `verify-verdict.md` shape.
 
 ## Structured plan metadata
 
@@ -94,6 +94,25 @@ validation and future plan-aware comparison without adding a runtime service.
 Use `-RequirePlanMetadata` to validate the sidecar and its synchronization with
 the Markdown goal, tier, and phase IDs. The option is intentionally opt-in so
 existing Markdown-only plans remain supported.
+
+## Deterministic plan scoring
+
+`scripts/score-plan.ps1` reads a saved plan, its metadata sidecar, and its
+verifier verdict, then emits one JSON object with `aggregate_score`, a
+deterministic verdict, metrics, and diagnostic issues. It does not execute
+declared plan commands or call external services.
+
+The six 0-100 metrics are `completeness`, `executability`,
+`criteria_coverage`, `dependency_sanity`, `risk_coverage`, and
+`evidence_readiness`. `APPROVED` requires every metric to be at least 80;
+otherwise an aggregate score of at least 50 is `NEEDS_REVISION`, and a lower
+score is `REJECTED`. These are reproducible plan-quality signals, not a
+replacement for `$controlflow-verify`'s adversarial review or native Codex
+approval decisions.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/score-plan.ps1 -RepoRoot . -PlanPath plans/my-task-plan.md
+```
 
 ## Plan templates
 
@@ -130,6 +149,7 @@ skills/controlflow-verify/        $controlflow-verify
 skills/controlflow-review/        $controlflow-review
 scripts/install.ps1               install / -Uninstall
 scripts/validate-plan.ps1         plan-format + metadata + verify-verdict validator
+scripts/score-plan.ps1            deterministic plan artifact scorer (JSON)
 schemas/plan-meta.schema.json     structured plan-sidecar contract
 README.md · CHANGELOG.md · LICENSE
 ```

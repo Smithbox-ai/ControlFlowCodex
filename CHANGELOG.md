@@ -15,6 +15,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Pester-compatible contract-test entry points and cross-platform CI coverage.
 - Paired Markdown and JSON templates for bugfix, refactor, migration, feature,
   and docs/test-only work, plus a deterministic template contract test.
+- `scripts/score-plan.ps1`, a dependency-free JSON scorer with aggregate plan
+  metrics, deterministic verdicts, and contract coverage.
 
 ### Changed
 

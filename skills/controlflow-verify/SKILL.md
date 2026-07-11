@@ -19,6 +19,10 @@ and cold-start executability. Invoke it explicitly with `$controlflow-verify`.
   criteria with the Markdown plan. A missing sidecar for a newly created
   non-trivial plan is `uncertain`; legacy Markdown-only plans remain valid when
   the approved contract did not require metadata.
+- When `scripts/score-plan.ps1` is available, run it against the saved plan and
+  retain its aggregate score, six metrics, and issues as reproducible evidence.
+  It does not replace adversarial verification: inspect its inputs and challenge
+  the plan's claims independently.
 - Use the active repository's schema and template when present, otherwise the
   bundled `controlflow-plan` format.
 
@@ -126,8 +130,8 @@ Every saved verdict includes these sections after findings:
 3. `## Evidence` and `## Recommendation` that distinguish inspected files and
    command output from inference.
 
-The score is a transparent verifier rubric, not a replacement for native Codex
-approval, execution, sandbox, or review decisions.
+The verifier rubric and deterministic score-plan output are evidence, not
+replacements for native Codex approval, execution, sandbox, or review decisions.
 
 ## Native Host Boundary
 
