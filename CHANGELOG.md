@@ -13,6 +13,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `schemas/plan-meta.schema.json`, metadata validation, five golden plan
   examples, and verifier verdict examples for artifact-first planning.
 - Pester-compatible contract-test entry points and cross-platform CI coverage.
+- Paired Markdown and JSON templates for bugfix, refactor, migration, feature,
+  and docs/test-only work, plus a deterministic template contract test.
 
 ### Changed
 
