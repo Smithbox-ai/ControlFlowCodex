@@ -26,8 +26,10 @@ Invoke-ContractScript "controlflow-skill-contract.tests.ps1"
 Invoke-ContractScript "validate-plan.tests.ps1"
 Invoke-ContractScript "score-plan.tests.ps1"
 Invoke-ContractScript "snapshot-context.tests.ps1"
+Invoke-ContractScript "detect-drift.tests.ps1"
 Invoke-ContractScript "template-contract.tests.ps1"
 Invoke-ContractScript "installer-smoke.tests.ps1"
+Invoke-ContractScript "release-smoke.tests.ps1"
 
 if ($UsePester) {
     $invokePester = Get-Command Invoke-Pester -ErrorAction SilentlyContinue

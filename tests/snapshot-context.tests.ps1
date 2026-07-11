@@ -76,6 +76,36 @@ for ($i = 0; $i -lt $git.tracked_files.Count; $i++) {
     }
 }
 
+if ($null -eq $git.recent_files) {
+    throw "git.recent_files must be present"
+}
+
+$repo = $positive.Json.repository
+if ($null -eq $repo) {
+    throw "repository section must be present"
+}
+if ($null -eq $repo.test_frameworks) {
+    throw "repository.test_frameworks must be present"
+}
+if ($repo.test_frameworks -notcontains "pester") {
+    throw "repository.test_frameworks must include 'pester' for this repository"
+}
+if ($null -eq $repo.package_managers) {
+    throw "repository.package_managers must be present"
+}
+if ($null -eq $repo.ci_systems) {
+    throw "repository.ci_systems must be present"
+}
+if ($repo.ci_systems -notcontains "github-actions") {
+    throw "repository.ci_systems must include 'github-actions' for this repository"
+}
+if ([string]::IsNullOrWhiteSpace($repo.docs_language)) {
+    throw "repository.docs_language must be a non-empty string"
+}
+if ($repo.docs_language -ne "en") {
+    throw "Expected docs_language 'en' for this repository, got '$($repo.docs_language)'"
+}
+
 $invalidPlanPath = "plans/not-a-plan.txt"
 $global:LASTEXITCODE = 0
 $errorOutput = @(& $snapshotScript -RepoRoot $repoRoot -PlanPath $invalidPlanPath 2>&1)
@@ -92,6 +122,9 @@ if ($null -eq $errorJson.PSObject.Properties["error"] -or [string]::IsNullOrWhit
 }
 if ($errorJson.task_slug -ne $null) {
     throw "Error output task_slug must be null for an invalid plan path"
+}
+if ($null -eq $errorJson.PSObject.Properties["repository"]) {
+    throw "Error output must include repository section"
 }
 $global:LASTEXITCODE = 0
 

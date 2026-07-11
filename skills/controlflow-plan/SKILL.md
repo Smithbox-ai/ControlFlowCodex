@@ -72,6 +72,20 @@ the normal sidecar and verdict validation only after grounding them. If the task
 type is ambiguous or the choice changes scope or safety, ask a clarifying
 question; do not select a template speculatively.
 
+## Multi-Candidate Planning
+
+For `MEDIUM` and `LARGE` complexity tiers, consider producing 2–3 candidate
+plans before selecting the best one. Run `$controlflow-verify` on each
+candidate, compare their score breakdowns from `scripts/score-plan.ps1`, and
+select the candidate with the strongest metrics and fewest blocking findings.
+Save the selected plan as the normal artifacts and discard the others.
+
+Multi-candidate planning is optional: use it when the task has architectural
+uncertainty or multiple viable approaches. For `TRIVIAL` and `SMALL` tasks,
+produce a single plan directly. Do not use multi-candidate planning as a
+runtime mechanism; it is an authoring-time technique that leverages the
+existing verify and score tools.
+
 ## Bundled Plan Format
 
 ### Header

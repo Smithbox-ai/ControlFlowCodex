@@ -20,6 +20,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `scripts/snapshot-context.ps1`, a dependency-free context snapshot command that
   captures git branch, HEAD commit, dirty flag, sorted tracked file tree, and a
   SHA-256 file-tree digest before planning.
+- scripts/detect-drift.ps1, a scope drift detector that compares actual
+  changed paths against planned files in plan.meta.json and classifies each
+  as approved, justified, or blocking.
+- scripts/release.ps1, a release workflow that updates the plugin version,
+  runs contract tests, packages a zip, creates a semver tag, and smoke-installs
+  the package in a clean temp directory.
 
 ### Changed
 

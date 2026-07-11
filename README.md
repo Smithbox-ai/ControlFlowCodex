@@ -150,6 +150,42 @@ powershell -ExecutionPolicy Bypass -File scripts/snapshot-context.ps1 `
   -RepoRoot . `
   -PlanPath plans/my-task-plan.md
 ```
+## Scope drift detection
+
+`scripts/detect-drift.ps1` compares the actual changed file paths (from git
+diff) against the planned files in `plan.meta.json`. When a
+`context-snapshot.json` exists, it uses the snapshot's HEAD commit as the diff
+base; otherwise it falls back to `HEAD~1`. Each changed path is classified as
+`approved_follow_through`, `justified_deviation`, or `blocking_scope_drift`.
+The output also lists `planned_but_unchanged` files for informational purposes.
+
+The verdict is `CLEAN` when no blocking scope drift is found, or
+`DRIFT_DETECTED` when unplanned files appear in the diff. The script reads git
+state only and never executes plan commands.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/detect-drift.ps1 `
+  -RepoRoot . `
+  -PlanPath plans/my-task-plan.md
+```
+
+## Release workflow
+
+`scripts/release.ps1` packages the plugin, creates a semver tag, and
+smoke-installs the package in a clean temp directory. It updates the version in
+`plugin.json`, runs the full contract suite (unless `-SkipTests`), creates a zip
+under `dist/`, extracts and installs it into an isolated home, verifies the
+marketplace entry, and uninstalls to confirm cleanup.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/release.ps1 `
+  -RepoRoot . `
+  -Version 1.1.0
+```
+
+Use `-SkipTag` when git is read-only or the tag already exists, and `-SkipTests`
+to skip the contract suite (for example, when tests were already run in CI).
+
 ## When you don't need it
 
 For an obvious one- or two-file change, use native Codex directly — no plan artifact,
@@ -167,6 +203,8 @@ scripts/install.ps1               install / -Uninstall
 scripts/validate-plan.ps1         plan-format + metadata + verify-verdict validator
 scripts/score-plan.ps1            deterministic plan artifact scorer (JSON)
 scripts/snapshot-context.ps1      pre-planning context snapshot (JSON)
+scripts/detect-drift.ps1         scope drift detector (JSON)
+scripts/release.ps1               release packaging, tag, and smoke-install
 schemas/plan-meta.schema.json     structured plan-sidecar contract
 README.md · CHANGELOG.md · LICENSE
 ```
