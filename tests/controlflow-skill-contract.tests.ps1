@@ -42,6 +42,8 @@ Assert-Contains $plan "migration-plan-template.md" "plan migration template mapp
 Assert-Contains $plan "feature-plan-template.md" "plan feature template mapping"
 Assert-Contains $plan "docs-test-only-plan-template.md" "plan docs template mapping"
 Assert-Contains $plan "do not select a template speculatively" "plan template ambiguity rule"
+Assert-Contains $plan "score-plan.ps1" "plan deterministic scorer command"
+Assert-Contains $plan "does not execute declared plan commands" "plan scorer safety boundary"
 
 Assert-Contains $verify "XML documentation and business-logic comments" "verify documentation gate"
 Assert-Contains $verify "dominant local language" "verify language gate"
@@ -52,6 +54,8 @@ Assert-Contains $verify "success criteria are measurable" "verify success criter
 Assert-Contains $verify "Score Breakdown" "verify score breakdown"
 Assert-Contains $verify "Revision Patch Instructions" "verify revision instructions"
 Assert-Contains $verify "plan.meta.json" "verify metadata input"
+Assert-Contains $verify "score-plan.ps1" "verify deterministic scorer input"
+Assert-Contains $verify "does not replace adversarial verification" "verify scorer boundary"
 
 Assert-Contains $review "Documentation and Comment Pass" "review documentation pass"
 Assert-Contains $review "speculative abstraction" "review abstraction review wording"
@@ -66,5 +70,8 @@ Assert-Contains $readme "-RequirePlanMetadata" "README metadata validator option
 Assert-Contains $readme "plans/artifacts/<task>/plan.meta.json" "README metadata location"
 Assert-Contains $readme "Plan templates" "README template section"
 Assert-Contains $readme "not validated execution plans" "README template boundary"
+Assert-Contains $readme "Deterministic plan scoring" "README scoring section"
+Assert-Contains $readme "criteria_coverage" "README scoring metric"
+Assert-Contains $readme "does not execute declared plan commands" "README scoring safety boundary"
 
 Write-Output "VALID skill behavior contract"
