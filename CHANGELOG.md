@@ -17,6 +17,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and docs/test-only work, plus a deterministic template contract test.
 - `scripts/score-plan.ps1`, a dependency-free JSON scorer with aggregate plan
   metrics, deterministic verdicts, and contract coverage.
+- `scripts/snapshot-context.ps1`, a dependency-free context snapshot command that
+  captures git branch, HEAD commit, dirty flag, sorted tracked file tree, and a
+  SHA-256 file-tree digest before planning.
 
 ### Changed
 

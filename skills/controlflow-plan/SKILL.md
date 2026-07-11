@@ -21,6 +21,23 @@ restartability discipline. Invoke it explicitly with `$controlflow-plan`.
 3. If repository canonical files conflict with the bundled fallback, repository
 files win and the difference must be noted under `## Discoveries`.
 
+## Context Snapshot
+
+Before authoring a plan, capture the repository state so later review can
+compare the final state against the pre-planning baseline:
+
+1. Run `scripts/snapshot-context.ps1 -RepoRoot . -PlanPath plans/<task>-plan.md`
+   when available.
+2. Save the JSON output to
+   `plans/artifacts/<task>/context-snapshot.json`.
+3. Use the snapshot as evidence of the starting branch, HEAD commit, and
+   tracked file tree; it does not gate plan creation or add a runtime
+   dependency.
+
+The snapshot is taken before authoring the plan and supplements the
+artifact-first workflow. It records git branch, HEAD commit, dirty flag,
+sorted tracked file tree, and a SHA-256 file-tree digest. The script reads
+git state only and never executes plan commands.
 ## Artifact-First Output
 
 For every non-trivial plan that is ready for execution, produce two aligned

@@ -44,6 +44,9 @@ Assert-Contains $plan "docs-test-only-plan-template.md" "plan docs template mapp
 Assert-Contains $plan "do not select a template speculatively" "plan template ambiguity rule"
 Assert-Contains $plan "score-plan.ps1" "plan deterministic scorer command"
 Assert-Contains $plan "does not execute declared plan commands" "plan scorer safety boundary"
+Assert-Contains $plan "snapshot-context.ps1" "plan context snapshot command"
+Assert-Contains $plan "context-snapshot.json" "plan context snapshot artifact"
+Assert-Contains $plan "before authoring the plan" "plan snapshot timing"
 
 Assert-Contains $verify "XML documentation and business-logic comments" "verify documentation gate"
 Assert-Contains $verify "dominant local language" "verify language gate"
@@ -64,6 +67,7 @@ Assert-Contains $review "goal and success criteria" "review goal criteria compar
 Assert-Contains $review "feedback loop" "review feedback-loop closure"
 Assert-Contains $review "plan.meta.json" "review metadata input"
 Assert-Contains $review "planned paths" "review metadata path comparison"
+Assert-Contains $review "context-snapshot" "review snapshot comparison input"
 
 Assert-Contains $readme "Structured plan metadata" "README metadata section"
 Assert-Contains $readme "-RequirePlanMetadata" "README metadata validator option"
@@ -73,5 +77,8 @@ Assert-Contains $readme "not validated execution plans" "README template boundar
 Assert-Contains $readme "Deterministic plan scoring" "README scoring section"
 Assert-Contains $readme "criteria_coverage" "README scoring metric"
 Assert-Contains $readme "does not execute declared plan commands" "README scoring safety boundary"
+Assert-Contains $readme "Context snapshot" "README snapshot section"
+Assert-Contains $readme "snapshot-context.ps1" "README snapshot command"
+Assert-Contains $readme "context-snapshot.json" "README snapshot artifact location"
 
 Write-Output "VALID skill behavior contract"

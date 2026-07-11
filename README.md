@@ -134,6 +134,22 @@ powershell -ExecutionPolicy Bypass -File scripts/validate-plan.ps1 `
   -RequireVerifyVerdict
 ```
 
+## Context snapshot
+
+`scripts/snapshot-context.ps1` captures the repository state immediately before
+planning: git branch, HEAD commit, dirty flag, sorted tracked file tree,
+tracked file count, and a SHA-256 file-tree digest. The planner saves the JSON
+output to `plans/artifacts/<task>/context-snapshot.json` so later review can
+compare the final state against the pre-planning baseline.
+
+The script reads git state only and never executes plan commands. It is
+evidence of the starting point, not a planning gate or runtime dependency.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/snapshot-context.ps1 `
+  -RepoRoot . `
+  -PlanPath plans/my-task-plan.md
+```
 ## When you don't need it
 
 For an obvious one- or two-file change, use native Codex directly — no plan artifact,
@@ -150,6 +166,7 @@ skills/controlflow-review/        $controlflow-review
 scripts/install.ps1               install / -Uninstall
 scripts/validate-plan.ps1         plan-format + metadata + verify-verdict validator
 scripts/score-plan.ps1            deterministic plan artifact scorer (JSON)
+scripts/snapshot-context.ps1      pre-planning context snapshot (JSON)
 schemas/plan-meta.schema.json     structured plan-sidecar contract
 README.md · CHANGELOG.md · LICENSE
 ```

@@ -67,7 +67,7 @@ handoff.
 ### Out-of-Scope Reconciliation
 
 Compare every aggregate changed path and behavior to the approved phases.
-Classify each difference as approved follow-through, justified deviation, or
+When a context-snapshot.json artifact exists, compare the final tracked file tree against the pre-planning baseline to detect files added, removed, or changed outside the plan scope. Classify each difference as approved follow-through, justified deviation, or
 blocking scope drift. When metadata is present, compare changed paths with its
 planned paths and compare final evidence with its structured success criteria;
 record any Markdown-to-metadata mismatch as a validation gap.
