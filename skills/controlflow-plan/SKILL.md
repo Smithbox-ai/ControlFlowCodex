@@ -250,6 +250,24 @@ sandboxing, approvals, retries, and subagent lifecycle.
   phase order, or blast radius. The native host requires approval before
   destructive or gated work; the plan records the safety gate.
 
+### Revision Loop Handoff
+
+When verification is not approved, the planner consumes the saved
+`plans/artifacts/<task-slug>/revision-request.json` handoff only after reading
+the matching non-approved `verify-verdict.md`. An approved verdict has no
+revision request and must not enter this loop.
+
+- Consume `next_action: revise` only for a targeted revision of the saved plan
+  and its metadata. Do not infer a revision from prose that is not in the
+  request.
+- For `next_action: replan` or `next_action: escalate`, stop the revision loop
+  and route the decision through the native host's replan or escalation path.
+- After any accepted revision, rerun `validate-plan.ps1`, `score-plan.ps1`, and
+  `$controlflow-verify` against the saved artifacts before execution resumes.
+- This skill records the handoff and its decisions; it does not edit plan
+  artifacts automatically or replace native host planning, approvals, or
+  escalation.
+
 ## Behavior Guardrails
 
 ### Minimum Viable Change Ladder

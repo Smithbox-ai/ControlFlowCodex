@@ -133,6 +133,25 @@ Every saved verdict includes these sections after findings:
 The verifier rubric and deterministic score-plan output are evidence, not
 replacements for native Codex approval, execution, sandbox, or review decisions.
 
+### Revision Request Handoff
+
+For a non-approved verdict (`NEEDS_REVISION` or `REJECTED`), write
+`plans/artifacts/<task-slug>/revision-request.json` with the structured finding,
+its `failure_classification`, and the mapped `next_action`. The request is
+required before the verifier can hand work back to the planner. After writing
+it, run the deterministic validator and require it to pass:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/validate-revision.ps1 `
+  -RepoRoot . `
+  -PlanPath plans/my-task-plan.md
+```
+
+An `APPROVED` verdict must not have a revision request. The verifier records and
+validates this handoff, but does not apply plan changes automatically. It must
+not rewrite the plan or metadata as a side effect of producing a verdict; the
+native host and planner own any explicitly authorized revision.
+
 ## Native Host Boundary
 
 - Do not spawn plugin verifier agents. If the user wants an isolated second
