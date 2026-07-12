@@ -59,7 +59,7 @@ runner.
 - Defines the request object consumed by validate-revision.ps1.
 - Registers revision-request.tests.ps1 between metadata validation and scoring.
 
-- [ ] **Step 1: Add the schema before implementation**
+- [x] **Step 1: Add the schema before implementation**
 
 Create a strict schema with this object shape:
 
@@ -101,7 +101,7 @@ Create a strict schema with this object shape:
 }
 ```
 
-- [ ] **Step 2: Build the valid fixture**
+- [x] **Step 2: Build the valid fixture**
 
 Copy the required Markdown-plan sections and metadata shape from the valid
 metadata fixture. Set the plan path to plans/revision-loop-plan.md, use one
@@ -144,7 +144,7 @@ Revise the plan and verify it again.
 Create the matching request with next_action equal to revise and one item that
 targets the focused test path.
 
-- [ ] **Step 3: Write the failing focused test**
+- [x] **Step 3: Write the failing focused test**
 
 Create tests/revision-request.tests.ps1 with a helper that invokes the future
 validator, captures output, and evaluates LASTEXITCODE after setting it to zero.
@@ -195,7 +195,7 @@ expected RED failure caused by the absent validator.
 - Emits a valid-request line for non-approved verdicts or an
   approved-without-request line for an approved verdict.
 
-- [ ] **Step 1: Resolve the plan and validate existing artifacts**
+- [x] **Step 1: Resolve the plan and validate existing artifacts**
 
 Reuse the established PowerShell path shape:
 
@@ -223,7 +223,7 @@ Invoke validate-plan.ps1 with RequirePlanMetadata and RequireVerifyVerdict;
 throw when its exit code is non-zero. This keeps the existing
 plan/metadata/verdict contract authoritative.
 
-- [ ] **Step 2: Parse and reconcile the request**
+- [x] **Step 2: Parse and reconcile the request**
 
 Implement helpers equivalent to Get-JsonProperty and Assert-NonEmptyString,
 preserving arrays with Write-Output -NoEnumerate. Parse verdict values with
@@ -247,7 +247,7 @@ using its action as the current verdict. For non-approved verdicts, require the
 request file, parse its JSON, and require each schema field plus unique
 non-empty item IDs.
 
-- [ ] **Step 3: Enforce artifact alignment and action mapping**
+- [x] **Step 3: Enforce artifact alignment and action mapping**
 
 Use one expected-path and mapping block:
 
@@ -267,7 +267,7 @@ Require request paths and status/classification to equal the verdict values.
 Reject unmapped combinations and a next_action that differs from the mapped
 value. Do not read or execute any value as a command.
 
-- [ ] **Step 4: Run GREEN in both shells**
+- [x] **Step 4: Run GREEN in both shells**
 
 Run:
 
@@ -295,7 +295,7 @@ Expected: both output VALID revision request contract.
 - Verifier writes the request and runs the new validator.
 - Neither skill automatically edits plan artifacts.
 
-- [ ] **Step 1: Add failing wording assertions**
+- [x] **Step 1: Add failing wording assertions**
 
 Add stable contract checks:
 
@@ -309,7 +309,7 @@ Assert-Contains $readme "Revision loop" "README revision section"
 
 Run the skill contract test and confirm RED before changing documentation.
 
-- [ ] **Step 2: Add minimum workflow wording**
+- [x] **Step 2: Add minimum workflow wording**
 
 In the verifier, require a request for non-approved verdicts and validate it.
 In the planner, consume next_action: revise only for revise; replan or
@@ -324,7 +324,7 @@ State that the loop records and validates a handoff, but does not apply plan
 changes automatically. Add the script to the repository layout and a concise
 Unreleased changelog entry.
 
-- [ ] **Step 3: Verify GREEN**
+- [x] **Step 3: Verify GREEN**
 
 Run the skill contract test again. Expected: VALID skill behavior contract.
 
@@ -336,7 +336,7 @@ Run the skill contract test again. Expected: VALID skill behavior contract.
   implementation reveals a necessary design correction.
 - Test: all contract tests.
 
-- [ ] **Step 1: Run final verification**
+- [x] **Step 1: Run final verification**
 
 Run:
 
@@ -349,13 +349,13 @@ git diff --check
 Expected: both runners end in VALID ControlFlow contract suite; whitespace
 check exits zero.
 
-- [ ] **Step 2: Check planned scope**
+- [x] **Step 2: Check planned scope**
 
 Confirm every changed path is listed in this plan. Re-run detect-drift.ps1 only
 when a context snapshot exists for this feature; otherwise record that this
 repository-maintenance task has no task snapshot.
 
-- [ ] **Step 3: Request independent review and commit**
+- [x] **Step 3: Request independent review and commit**
 
 Request a read-only review of the validator, fixtures, and skill wording. Fix
 all Critical and Important findings, rerun Step 1, and commit the exact files
