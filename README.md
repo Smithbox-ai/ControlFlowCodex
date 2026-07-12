@@ -110,9 +110,31 @@ score is `REJECTED`. These are reproducible plan-quality signals, not a
 replacement for `$controlflow-verify`'s adversarial review or native Codex
 approval decisions.
 
+Revision handoffs use the strict `schemas/revision-request.schema.json`
+contract and `scripts/validate-revision.ps1` validator described below.
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/score-plan.ps1 -RepoRoot . -PlanPath plans/my-task-plan.md
 ```
+
+## Revision loop
+
+When `$controlflow-verify` returns `NEEDS_REVISION` or `REJECTED`, it writes a
+structured `revision-request.json` handoff beside the verdict and validates it
+before returning control to the planner. The planner consumes that request's
+`next_action`: it revises only for `revise`, while `replan` and `escalate` go
+through the native host. After any revision, validate, score, and verify the
+saved artifacts again:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/validate-revision.ps1 -RepoRoot . -PlanPath plans/my-task-plan.md
+```
+
+The revision loop records and validates a handoff, but does not apply plan
+changes automatically. Plan and metadata edits remain explicit planner or
+native-host actions.
+When a later verdict is APPROVED, a valid request from the prior cycle may
+remain as retained evidence but is not treated as the current action.
 
 ## Plan templates
 
@@ -201,11 +223,13 @@ skills/controlflow-verify/        $controlflow-verify
 skills/controlflow-review/        $controlflow-review
 scripts/install.ps1               install / -Uninstall
 scripts/validate-plan.ps1         plan-format + metadata + verify-verdict validator
+scripts/validate-revision.ps1     revision-request and verdict handoff validator
 scripts/score-plan.ps1            deterministic plan artifact scorer (JSON)
 scripts/snapshot-context.ps1      pre-planning context snapshot (JSON)
 scripts/detect-drift.ps1         scope drift detector (JSON)
 scripts/release.ps1               release packaging, tag, and smoke-install
 schemas/plan-meta.schema.json     structured plan-sidecar contract
+schemas/revision-request.schema.json revision-loop handoff contract
 README.md · CHANGELOG.md · LICENSE
 ```
 

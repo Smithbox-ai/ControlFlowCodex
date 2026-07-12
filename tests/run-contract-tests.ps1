@@ -24,6 +24,7 @@ function Invoke-ContractScript([string]$Name) {
 
 Invoke-ContractScript "controlflow-skill-contract.tests.ps1"
 Invoke-ContractScript "validate-plan.tests.ps1"
+Invoke-ContractScript "revision-request.tests.ps1"
 Invoke-ContractScript "score-plan.tests.ps1"
 Invoke-ContractScript "snapshot-context.tests.ps1"
 Invoke-ContractScript "detect-drift.tests.ps1"

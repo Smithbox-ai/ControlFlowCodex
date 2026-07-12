@@ -26,6 +26,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - scripts/release.ps1, a release workflow that updates the plugin version,
   runs contract tests, packages a zip, creates a semver tag, and smoke-installs
   the package in a clean temp directory.
+- Revision-loop handoff guidance, a strict revision-request schema, and a
+  dependency-free validator for validating non-approved verdicts without
+  automatically applying plan changes.
 
 ### Changed
 
