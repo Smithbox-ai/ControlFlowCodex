@@ -13,10 +13,11 @@ function Get-JsonProperty([object]$Object, [string]$Name, [string]$Label) {
         throw "Revision request $Label is missing"
     }
 
-    $property = $Object.PSObject.Properties[$Name]
-    if ($null -eq $property) {
+    $properties = @($Object.PSObject.Properties | Where-Object { $_.Name -ceq $Name })
+    if ($properties.Count -ne 1) {
         throw "Revision request $Label is missing required property '$Name'"
     }
+    $property = $properties[0]
 
     if ($property.Value -is [System.Array]) {
         Write-Output -NoEnumerate $property.Value
@@ -41,13 +42,13 @@ function Assert-ExactProperties([object]$Object, [string[]]$RequiredProperties, 
 
     $actualProperties = @($Object.PSObject.Properties.Name)
     foreach ($name in $RequiredProperties) {
-        if ($actualProperties -notcontains $name) {
+        if ($actualProperties -cnotcontains $name) {
             throw "Revision request $Label is missing required property '$name'"
         }
     }
 
     foreach ($name in $actualProperties) {
-        if ($RequiredProperties -notcontains $name) {
+        if ($RequiredProperties -cnotcontains $name) {
             throw "Revision request $Label has unsupported property '$name'"
         }
     }
@@ -64,11 +65,22 @@ if ($planLeaf -notmatch '^(?<slug>.+)-plan\.md$') {
     throw "Plan filename must end with '-plan.md': $planLeaf"
 }
 $taskSlug = $Matches['slug']
+$repoRootPrefix = $repoRootResolved.TrimEnd([char]'\', [char]'/') + [IO.Path]::DirectorySeparatorChar
+if (-not $planResolved.StartsWith($repoRootPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Plan path must be inside RepoRoot: $planResolved"
+}
+$expectedPlanPath = $planResolved.Substring($repoRootResolved.Length).
+    TrimStart([char]'\', [char]'/').Replace('\', '/')
+if ($expectedPlanPath -cnotmatch '^plans/.+-plan\.md$') {
+    throw "Plan path must match 'plans/<slug>-plan.md': $expectedPlanPath"
+}
 
 $validatePlanPath = Join-Path $PSScriptRoot "validate-plan.ps1"
+$global:LASTEXITCODE = 0
 & $validatePlanPath -RepoRoot $repoRootResolved -PlanPath $planResolved -RequirePlanMetadata -RequireVerifyVerdict
-if (($null -ne $LASTEXITCODE) -and ($LASTEXITCODE -ne 0)) {
-    throw "Plan validation failed with exit code $LASTEXITCODE"
+$validatePlanExitCode = $global:LASTEXITCODE
+if (($null -ne $validatePlanExitCode) -and ($validatePlanExitCode -ne 0)) {
+    throw "Plan validation failed with exit code $validatePlanExitCode"
 }
 
 $verdictPath = Join-Path $repoRootResolved "plans/artifacts/$taskSlug/verify-verdict.md"
@@ -88,18 +100,19 @@ if (-not $statusMatch.Success) {
 $verdictStatus = $statusMatch.Groups[1].Value
 $requestPath = Join-Path $repoRootResolved "plans/artifacts/$taskSlug/revision-request.json"
 if ($verdictStatus -eq "APPROVED") {
-if (Test-Path -LiteralPath $requestPath) {
-        throw "Approved verify verdict must not have a revision request: $requestPath"
+    if (-not (Test-Path -LiteralPath $requestPath)) {
+        Write-Output "VALID approved verdict without revision request: $verdictPath"
+        return
     }
-
-    Write-Output "VALID approved verdict without revision request: $verdictPath"
-    return
+    if (-not (Test-Path -LiteralPath $requestPath -PathType Leaf)) {
+        throw "Retained revision request must be a JSON file: $requestPath"
+    }
 }
 
-if (-not $classificationMatch.Success) {
+if (($verdictStatus -ne "APPROVED") -and (-not $classificationMatch.Success)) {
     throw "Non-approved verify verdict requires Failure Classification"
 }
-if (-not (Test-Path -LiteralPath $requestPath -PathType Leaf)) {
+if (($verdictStatus -ne "APPROVED") -and (-not (Test-Path -LiteralPath $requestPath -PathType Leaf))) {
     throw "Non-approved verify verdict requires revision request: $requestPath"
 }
 
@@ -127,15 +140,12 @@ if ($schemaVersion -cne "1.0.0") {
     throw "Revision request schema_version must be '1.0.0'"
 }
 
-$expectedPlanPath = $planResolved.Substring($repoRootResolved.Length).
-    TrimStart([char]'\', [char]'/').Replace('\', '/')
 $expectedVerdictPath = "plans/artifacts/$taskSlug/verify-verdict.md"
 $allowedActions = @{
     "NEEDS_REVISION/fixable" = "revise"
     "REJECTED/needs_replan" = "replan"
     "REJECTED/escalate" = "escalate"
 }
-$mappingKey = "$verdictStatus/$($classificationMatch.Groups[1].Value)"
 
 $requestPlanPath = Assert-NonEmptyString (Get-JsonProperty $request "plan_path" "document") "plan_path"
 if ($requestPlanPath -cne $expectedPlanPath) {
@@ -148,14 +158,19 @@ if ($requestVerdictPath -cne $expectedVerdictPath) {
 }
 
 $requestStatus = Assert-NonEmptyString (Get-JsonProperty $request "source_verdict_status" "document") "source_verdict_status"
-if ($requestStatus -cne $verdictStatus) {
+if (($verdictStatus -ne "APPROVED") -and ($requestStatus -cne $verdictStatus)) {
     throw "Revision request source_verdict_status '$requestStatus' must match '$verdictStatus'"
 }
 
 $failureClassification = Assert-NonEmptyString (Get-JsonProperty $request "failure_classification" "document") "failure_classification"
-$verdictClassification = $classificationMatch.Groups[1].Value
-if ($failureClassification -cne $verdictClassification) {
-    throw "Revision request failure_classification '$failureClassification' must match '$verdictClassification'"
+$mappingKey = if ($verdictStatus -eq "APPROVED") {
+    "$requestStatus/$failureClassification"
+} else {
+    $verdictClassification = $classificationMatch.Groups[1].Value
+    if ($failureClassification -cne $verdictClassification) {
+        throw "Revision request failure_classification '$failureClassification' must match '$verdictClassification'"
+    }
+    "$verdictStatus/$verdictClassification"
 }
 
 if (-not $allowedActions.ContainsKey($mappingKey)) {

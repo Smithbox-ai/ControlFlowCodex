@@ -255,7 +255,8 @@ sandboxing, approvals, retries, and subagent lifecycle.
 When verification is not approved, the planner consumes the saved
 `plans/artifacts/<task-slug>/revision-request.json` handoff only after reading
 the matching non-approved `verify-verdict.md`. An approved verdict has no
-revision request and must not enter this loop.
+new request; a valid request from a prior cycle may remain as retained evidence
+and is not treated as the current action.
 
 - Consume `next_action: revise` only for a targeted revision of the saved plan
   and its metadata. Do not infer a revision from prose that is not in the

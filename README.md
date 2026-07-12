@@ -130,6 +130,8 @@ powershell -ExecutionPolicy Bypass -File scripts/validate-revision.ps1 -RepoRoot
 The revision loop records and validates a handoff, but does not apply plan
 changes automatically. Plan and metadata edits remain explicit planner or
 native-host actions.
+When a later verdict is APPROVED, a valid request from the prior cycle may
+remain as retained evidence but is not treated as the current action.
 
 ## Plan templates
 

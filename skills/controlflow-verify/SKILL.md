@@ -147,7 +147,9 @@ powershell -ExecutionPolicy Bypass -File scripts/validate-revision.ps1 `
   -PlanPath plans/my-task-plan.md
 ```
 
-An `APPROVED` verdict must not have a revision request. The verifier records and
+An `APPROVED` verdict must not create a new revision request. A valid request
+from a prior cycle may remain as retained evidence and is validated as
+historical, not treated as the current action. The verifier records and
 validates this handoff, but does not apply plan changes automatically. It must
 not rewrite the plan or metadata as a side effect of producing a verdict; the
 native host and planner own any explicitly authorized revision.

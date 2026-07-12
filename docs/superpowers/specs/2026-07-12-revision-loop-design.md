@@ -27,8 +27,10 @@ skill, external services, or a general issue tracker.
 
 ## Artifact Contract
 
-`revision-request.json` is written only for a verifier verdict whose status is
-not `APPROVED`. It has these fields:
+`revision-request.json` is created for a non-approved verifier verdict. It may
+remain beside a later `APPROVED` verdict as retained evidence from the prior
+cycle; the approved verdict does not create a new active request. It has these
+fields:
 
 | Field | Rule |
 | --- | --- |
@@ -61,8 +63,9 @@ treated as a small revision.
 
 1. The planner saves the Markdown plan and metadata sidecar, then runs the
    existing validator, deterministic scorer, and verifier.
-2. If the verifier returns `APPROVED`, no revision request is created and
-   implementation may begin through the native host.
+2. If the verifier returns `APPROVED`, no new revision request is created.
+   An existing request from a prior cycle is retained and validated as
+   historical evidence; implementation may begin through the native host.
 3. If the verifier returns a non-approved verdict, it writes
    `revision-request.json` beside the verdict and runs
    `validate-revision.ps1`.
@@ -79,10 +82,11 @@ verdict closes the loop without deleting earlier artifacts.
 ## Validation Behavior
 
 `scripts/validate-revision.ps1 -RepoRoot . -PlanPath plans/<task>-plan.md`
-locates the matching metadata, verifier verdict, and revision request. It
-checks file presence, JSON parsing, schema-shaped values, artifact-path
+locates the matching metadata, verifier verdict, and optional revision request.
+It checks file presence, JSON parsing, schema-shaped values, artifact-path
 alignment, verdict status, failure classification, allowed action mapping, and
-unique/non-empty request items.
+unique/non-empty request items. With `APPROVED`, an existing request must be a
+valid retained non-approved request; it is not treated as the current action.
 
 The script is dependency-free PowerShell compatible with Windows PowerShell 5.1
 and PowerShell 7. It emits validation text, exits non-zero on invalid input, and
@@ -103,6 +107,7 @@ Focused PowerShell tests cover:
 
 - a valid `NEEDS_REVISION` + `fixable` request with `next_action: revise`;
 - a valid `REJECTED` + `needs_replan` request;
+- an `APPROVED` verdict retaining a valid prior request;
 - a request whose action conflicts with its verdict;
 - a request with mismatched plan path, duplicate item IDs, or missing item
   content;

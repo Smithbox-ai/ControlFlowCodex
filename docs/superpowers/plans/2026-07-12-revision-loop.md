@@ -22,6 +22,8 @@ runner.
 - Store the request at plans/artifacts/<task>/revision-request.json.
 - Support only NEEDS_REVISION/fixable/revise,
   REJECTED/needs_replan/replan, and REJECTED/escalate/escalate.
+- Preserve a prior valid revision request as historical evidence when a later
+  verdict is APPROVED; do not treat it as the active action.
 - Run focused tests in Windows PowerShell and PowerShell 7 before the full suite.
 
 ## File Structure
@@ -159,6 +161,7 @@ After the validator exists, assert these cases:
 ```powershell
 Assert-RevisionSucceeds "plans/revision-loop-plan.md" $fixtureRoot
 Assert-RevisionSucceeds "plans/examples/bugfix-plan.md" $repoRoot
+Assert-ApprovedWithRetainedRequestSucceeds $fixtureRoot
 Assert-MutatedRequestFails "an action that conflicts with NEEDS_REVISION" {
     param($request)
     $request.next_action = "replan"
@@ -237,9 +240,10 @@ $classificationMatch = [regex]::Match(
 )
 ```
 
-For APPROVED, fail if a revision request exists; otherwise return the
-approved-without-request validation line. For non-approved verdicts, require
-the request file, parse its JSON, and require each schema field plus unique
+For APPROVED, return the approved-without-request line when no request exists.
+When a request exists, validate it as retained historical evidence without
+using its action as the current verdict. For non-approved verdicts, require the
+request file, parse its JSON, and require each schema field plus unique
 non-empty item IDs.
 
 - [ ] **Step 3: Enforce artifact alignment and action mapping**
