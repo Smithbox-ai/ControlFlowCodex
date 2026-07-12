@@ -59,6 +59,25 @@ function Assert-MutatedRequestFails([string]$Label, [scriptblock]$Mutation) {
     }
 }
 
+function Assert-ApprovedRequestPathFails() {
+    $temporaryRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("controlflow-revision-approved-" + [guid]::NewGuid().ToString("N"))
+    try {
+        New-Item -ItemType Directory -Path $temporaryRoot -Force | Out-Null
+        Copy-Item -LiteralPath (Join-Path $repoRoot "plans") -Destination $temporaryRoot -Recurse
+        $requestDirectory = Join-Path $temporaryRoot "plans/artifacts/bugfix/revision-request.json"
+        New-Item -ItemType Directory -Path $requestDirectory -Force | Out-Null
+
+        $result = Invoke-RevisionValidator "plans/examples/bugfix-plan.md" $temporaryRoot
+        if ($result.Succeeded) {
+            throw "Expected approved verdict to reject an existing revision request path, but it succeeded: $($result.Output -join [Environment]::NewLine)"
+        }
+    } finally {
+        if (Test-Path -LiteralPath $temporaryRoot) {
+            Remove-Item -LiteralPath $temporaryRoot -Recurse -Force
+        }
+    }
+}
+
 Assert-RevisionSucceeds "plans/revision-loop-plan.md" $fixtureRoot
 Assert-RevisionSucceeds "plans/examples/bugfix-plan.md" $repoRoot
 Assert-MutatedRequestFails "an action that conflicts with NEEDS_REVISION" {
@@ -73,5 +92,10 @@ Assert-MutatedRequestFails "a mismatched plan path" {
     param($request)
     $request.plan_path = "plans/other-plan.md"
 }
+Assert-MutatedRequestFails "a whitespace-padded next action" {
+    param($request)
+    $request.next_action = "revise "
+}
+Assert-ApprovedRequestPathFails
 
 Write-Output "VALID revision request contract"
