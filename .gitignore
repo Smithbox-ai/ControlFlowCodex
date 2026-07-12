@@ -1,6 +1,7 @@
 .vs/
 *.user
 .cache/
+.worktrees/
 node_modules/
 Thumbs.db
 *.tmp
