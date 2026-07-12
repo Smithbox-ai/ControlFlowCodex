@@ -2,6 +2,7 @@
 *.user
 .cache/
 .worktrees/
+.superpowers/
 node_modules/
 Thumbs.db
 *.tmp
