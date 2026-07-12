@@ -39,6 +39,7 @@ runner.
 | skills/controlflow-plan/SKILL.md | Tells planners how to consume a revision request. |
 | skills/controlflow-verify/SKILL.md | Tells verifiers how to create and validate a revision request. |
 | README.md and CHANGELOG.md | Public artifact and command documentation. |
+| .gitignore | Keeps local SDD progress and project worktrees out of the product diff. |
 
 ### Task 1: Schema and RED Contract Fixture
 

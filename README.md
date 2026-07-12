@@ -110,6 +110,9 @@ score is `REJECTED`. These are reproducible plan-quality signals, not a
 replacement for `$controlflow-verify`'s adversarial review or native Codex
 approval decisions.
 
+Revision handoffs use the strict `schemas/revision-request.schema.json`
+contract and `scripts/validate-revision.ps1` validator described below.
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/score-plan.ps1 -RepoRoot . -PlanPath plans/my-task-plan.md
 ```
@@ -226,6 +229,7 @@ scripts/snapshot-context.ps1      pre-planning context snapshot (JSON)
 scripts/detect-drift.ps1         scope drift detector (JSON)
 scripts/release.ps1               release packaging, tag, and smoke-install
 schemas/plan-meta.schema.json     structured plan-sidecar contract
+schemas/revision-request.schema.json revision-loop handoff contract
 README.md · CHANGELOG.md · LICENSE
 ```
 
