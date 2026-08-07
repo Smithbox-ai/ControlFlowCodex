@@ -138,15 +138,43 @@ offline correlation only — it is not in the runtime loop.
 
 ## Installation
 
-ControlFlow ships as a native Codex plugin. Add this repository as a marketplace
-and install through Codex's own flow:
+### From a project checkout (local / development)
+
+`scripts/install.ps1` is a clean reinstall: it first **removes any previously
+installed plugin files** at the target, then **copies the current shipped files
+from this project directory**. Removing first means files renamed or deleted
+between versions never leave orphans behind.
+
+```powershell
+pwsh -File scripts/install.ps1 -Force
+```
+
+This copies the shipped surface (`.codex-plugin`, `assets`, `skills`, `schemas`,
+`scripts`, `plans/templates`, `plans/examples`, `tests`, `evals`, `README.md`,
+`CHANGELOG.md`, `LICENSE`) into `$HOME/plugins/controlflow-codex` and registers
+a local marketplace entry at `$HOME/.agents/plugins/marketplace.json`. Working
+state (`.git`, `.vs`, `dist`, …) is never copied.
+
+Remove it again with:
+
+```powershell
+pwsh -File scripts/install.ps1 -Uninstall -Force
+```
+
+Without `-Force`, install refuses to overwrite an existing target and uninstall
+prompts for confirmation. Use `-HomeRoot <path>` to install into a different
+home (useful for isolated testing).
+
+### Published distribution
+
+For a published release, prefer Codex's native plugin marketplace flow once a
+marketplace manifest is published:
 
 ```bash
 codex plugin marketplace add Smithbox-ai/ControlFlowCodex
 ```
 
-Then use `codex plugin` install/upgrade/remove. There is no custom installer
-script; the `.codex-plugin/plugin.json` manifest is the plugin contract.
+The `.codex-plugin/plugin.json` manifest is the plugin contract in both paths.
 
 ## Migration from v1 artifacts
 
@@ -175,6 +203,7 @@ skills/controlflow-plan/           $controlflow-plan  (SKILL.md + agents/openai.
 skills/controlflow-verify/         $controlflow-verify
 skills/controlflow-review/         $controlflow-review
 schemas/plan-meta.schema.json      v2 machine contract
+scripts/install.ps1                local install/uninstall (remove + copy from project)
 scripts/validate-plan.ps1          metadata + verdict validator
 scripts/detect-drift.ps1           scope drift detector (planned/unplanned)
 plans/templates/                   one compact template pair
@@ -187,6 +216,7 @@ evals/                             behavioral regression corpus + runner
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
 
 
 

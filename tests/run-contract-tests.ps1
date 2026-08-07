@@ -26,6 +26,7 @@ Invoke-ContractScript "controlflow-skill-contract.tests.ps1"
 Invoke-ContractScript "template-contract.tests.ps1"
 Invoke-ContractScript "validate-plan.tests.ps1"
 Invoke-ContractScript "detect-drift.tests.ps1"
+Invoke-ContractScript "installer-smoke.tests.ps1"
 
 if ($UsePester) {
     $invokePester = Get-Command Invoke-Pester -ErrorAction SilentlyContinue
@@ -51,4 +52,5 @@ if ($UsePester) {
 }
 
 Write-Output "VALID ControlFlow contract suite"
+
 

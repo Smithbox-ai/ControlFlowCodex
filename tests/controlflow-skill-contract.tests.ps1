@@ -100,9 +100,9 @@ Assert-Contains $readme "plan.meta.json" "README metadata reference"
 Assert-Contains $readme "detect-drift.ps1" "README drift command"
 Assert-Contains $readme "validate-plan.ps1" "README validator command"
 Assert-Contains $readme "evals" "README eval methodology"
-Assert-NotContains $readme "install.ps1" "README installer reference"
 Assert-NotContains $readme "score-plan.ps1" "README runtime scorer reference"
 Assert-NotContains $readme "revision-request" "README revision loop reference"
 Assert-NotContains $readme "snapshot-context.ps1" "README snapshot command"
 
 Write-Output "VALID skill behavior contract"
+

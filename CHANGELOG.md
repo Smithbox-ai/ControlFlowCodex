@@ -19,25 +19,26 @@ Evidence-first planning layer, no duplicated agent runtime.
 - Runtime `score-plan.ps1` (moved to `evals/legacy/` for optional offline correlation only).
 - `revision-request.json` loop, `validate-revision.ps1`, and `revision-request.schema.json`.
 - `snapshot-context.ps1` and full-tree `context-snapshot.json` (replaced by `baseline`).
-- `install.ps1` (native Codex plugin marketplace flow replaces it).
+- The v1 whole-repo custom installer (replaced by the clean-reinstall `scripts/install.ps1` above plus the native marketplace flow for published distribution).
 - `release.ps1` (moved to GitHub Actions `release.yml`).
 - 4 of 5 template pairs, old v1 examples/artifacts, and their contract tests.
 
 ### Added
+- `scripts/install.ps1` — local clean-reinstall installer: removes any previously installed plugin files at the target, then copies the current shipped files from the project checkout (no orphans). Plus an `installer-smoke.tests.ps1` contract test.
 - `evals/` behavioral regression corpus (7 cases) + `run-evals.ps1` runner (`-ValidateOnly` for PR CI, full scoring for nightly A/B).
 - `evals/baseline/static-metrics.json` v1 baseline.
 - `.github/workflows/eval.yml` (nightly/manual) and `release.yml` (packaging + tag).
 
 ### Targets (measured by evals, not promises)
 - Agent-facing `SKILL.md` footprint: ~-73% (29,989 → ~8,140 bytes).
-- Runtime scripts: 7 → 2. Template files: 10 → 2.
+- Runtime workflow scripts: 7 → 2 (`validate-plan.ps1`, `detect-drift.ps1`). `install.ps1` is a local dev installer, not a runtime workflow script. Template files: 10 → 2.
 - Goal: ≥25% median token reduction with no measurable critical-quality regression.
 
 All notable changes to the ControlFlow for Codex plugin are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## 1.x — prior to Compact vNext (historical)
 
 ### Added
 
@@ -112,4 +113,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Native Codex remains responsible for Plan mode, execution, sandboxing, approvals,
 subagents, generic review, goals, hooks, and memories.
+
+
+
 
