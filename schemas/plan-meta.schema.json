@@ -2,68 +2,103 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Smithbox-ai/ControlFlowCodex/schemas/plan-meta.schema.json",
   "title": "ControlFlow Plan Metadata",
-  "description": "Structured sidecar for a ControlFlow Markdown plan.",
+  "description": "Canonical machine contract for a ControlFlow plan (v2). The Markdown plan carries human rationale; this sidecar carries the machine-critical data.",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schema_version",
-    "plan_path",
     "goal",
-    "complexity_tier",
-    "phases",
-    "semantic_risks",
-    "success_criteria"
+    "tier",
+    "baseline",
+    "scope",
+    "criteria",
+    "checks"
   ],
   "properties": {
     "schema_version": {
-      "const": "1.0.0"
-    },
-    "plan_path": {
-      "type": "string",
-      "pattern": "^plans/.+-plan\\.md$"
+      "const": "2.0.0"
     },
     "goal": {
       "type": "string",
       "minLength": 1
     },
-    "complexity_tier": {
+    "tier": {
       "enum": ["TRIVIAL", "SMALL", "MEDIUM", "LARGE"]
     },
-    "phases": {
-      "type": "array",
-      "minItems": 1,
-      "items": {
-        "$ref": "#/$defs/phase"
+    "baseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit", "dirty_paths"],
+      "properties": {
+        "commit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dirty_paths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
       }
     },
-    "semantic_risks": {
-      "type": "array",
-      "minItems": 7,
-      "items": {
-        "$ref": "#/$defs/semanticRisk"
-      }
-    },
-    "success_criteria": {
+    "scope": {
       "type": "array",
       "minItems": 1,
       "items": {
         "type": "string",
         "minLength": 1
       }
+    },
+    "criteria": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "risks": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/risk"
+      }
+    },
+    "phases": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/phase"
+      }
     }
   },
   "$defs": {
+    "risk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["impact"],
+      "properties": {
+        "impact": {
+          "enum": ["LOW", "MEDIUM", "HIGH"]
+        },
+        "mitigation": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
     "phase": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "id",
-        "objective",
-        "dependencies",
-        "files",
-        "commands",
-        "success_criteria"
-      ],
+      "required": ["id", "objective", "criteria"],
       "properties": {
         "id": {
           "type": "string",
@@ -73,60 +108,34 @@
           "type": "string",
           "minLength": 1
         },
-        "dependencies": {
+        "depends_on": {
           "type": "array",
           "items": {
             "type": "string",
             "minLength": 1
           }
         },
-        "files": {
+        "scope": {
           "type": "array",
-          "minItems": 1,
           "items": {
             "type": "string",
             "minLength": 1
           }
         },
-        "commands": {
+        "checks": {
           "type": "array",
-          "minItems": 1,
           "items": {
             "type": "string",
             "minLength": 1
           }
         },
-        "success_criteria": {
+        "criteria": {
           "type": "array",
           "minItems": 1,
           "items": {
             "type": "string",
             "minLength": 1
           }
-        }
-      }
-    },
-    "semanticRisk": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["category", "applicability", "impact"],
-      "properties": {
-        "category": {
-          "enum": [
-            "data_volume",
-            "performance",
-            "concurrency",
-            "access_control",
-            "migration_rollback",
-            "dependency",
-            "operability"
-          ]
-        },
-        "applicability": {
-          "enum": ["applicable", "not_applicable"]
-        },
-        "impact": {
-          "enum": ["LOW", "MEDIUM", "HIGH"]
         }
       }
     }

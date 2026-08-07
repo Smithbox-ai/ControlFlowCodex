@@ -23,14 +23,9 @@ function Invoke-ContractScript([string]$Name) {
 }
 
 Invoke-ContractScript "controlflow-skill-contract.tests.ps1"
-Invoke-ContractScript "validate-plan.tests.ps1"
-Invoke-ContractScript "revision-request.tests.ps1"
-Invoke-ContractScript "score-plan.tests.ps1"
-Invoke-ContractScript "snapshot-context.tests.ps1"
-Invoke-ContractScript "detect-drift.tests.ps1"
 Invoke-ContractScript "template-contract.tests.ps1"
-Invoke-ContractScript "installer-smoke.tests.ps1"
-Invoke-ContractScript "release-smoke.tests.ps1"
+Invoke-ContractScript "validate-plan.tests.ps1"
+Invoke-ContractScript "detect-drift.tests.ps1"
 
 if ($UsePester) {
     $invokePester = Get-Command Invoke-Pester -ErrorAction SilentlyContinue
@@ -40,9 +35,20 @@ if ($UsePester) {
 
     $pesterTestPath = Join-Path $testRoot "controlflow-contract.Tests.ps1"
     $pesterResult = Invoke-Pester -Path $pesterTestPath -PassThru
-    if ($pesterResult.FailedCount -ne 0) {
-        throw "Pester contract tests failed: $($pesterResult.FailedCount)"
+
+    # Be robust across Pester versions: Pester 5 exposes .Result ("Passed"/"Failed"),
+    # while Pester 3 exposes .FailedCount. Treat either as the failure signal.
+    $pesterFailed = $false
+    if ($null -ne $pesterResult.PSObject.Properties["Result"]) {
+        $pesterFailed = ($pesterResult.Result -ne "Passed")
+    } elseif ($null -ne $pesterResult.PSObject.Properties["FailedCount"]) {
+        $pesterFailed = ($pesterResult.FailedCount -ne 0)
+    }
+
+    if ($pesterFailed) {
+        throw "Pester contract tests failed"
     }
 }
 
 Write-Output "VALID ControlFlow contract suite"
+

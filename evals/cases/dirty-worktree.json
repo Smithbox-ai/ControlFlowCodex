@@ -1,0 +1,13 @@
+{
+  "max_artifact_bytes": 12000,
+  "task": "Plan a small refactor while the worktree already has unrelated uncommitted changes to src/legacy/Old.cs.",
+  "tier": "SMALL",
+  "id": "dirty-worktree",
+  "must_detect": [
+    "dirty_paths",
+    "src/legacy/Old.cs"
+  ],
+  "must_not_do": [
+    "dirty_paths\": []"
+  ]
+}

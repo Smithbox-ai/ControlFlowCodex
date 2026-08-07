@@ -2,16 +2,17 @@ name: ci
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 jobs:
   validate:
-    name: Validate on ${{ matrix.os }}
+    name: Contracts on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
       - name: Show PowerShell version
@@ -22,6 +23,31 @@ jobs:
         run: |
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
           Install-Module -Name Pester -MinimumVersion 5.0 -Scope CurrentUser -Force -AllowClobber
-      - name: Run contract suite
+      - name: Run structural contract suite
         shell: pwsh
         run: ./tests/run-contract-tests.ps1 -UsePester
+      - name: Validate eval case schemas
+        shell: pwsh
+        run: ./evals/run-evals.ps1 -RepoRoot . -ValidateOnly
+
+  # macOS runs on main only (not on every PR), per the Compact vNext CI split.
+  validate-macos:
+    name: Contracts on macOS
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show PowerShell version
+        shell: pwsh
+        run: $PSVersionTable
+      - name: Install Pester
+        shell: pwsh
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module -Name Pester -MinimumVersion 5.0 -Scope CurrentUser -Force -AllowClobber
+      - name: Run structural contract suite
+        shell: pwsh
+        run: ./tests/run-contract-tests.ps1 -UsePester
+      - name: Validate eval case schemas
+        shell: pwsh
+        run: ./evals/run-evals.ps1 -RepoRoot . -ValidateOnly

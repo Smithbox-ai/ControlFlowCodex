@@ -1,162 +1,71 @@
 ---
 name: controlflow-verify
-description: "Use after a ControlFlow plan is saved and before implementation. Runs tier-gated adversarial verification inline: structural audit, assumption/mirage detection, and cold-start executability simulation."
+description: "Adversarially verify a saved ControlFlow plan before implementation. Invoke explicitly with $controlflow-verify."
 ---
 
 # ControlFlow Verify
 
-## Overview
-
 Verify a saved plan before implementation. The checks run inline with zero
-subagents shipped by the plugin, combining structural audit, mirage detection,
-and cold-start executability. Invoke it explicitly with `$controlflow-verify`.
+shipped subagents. Invoke explicitly with `$controlflow-verify`.
 
-## Input and Contract
+## Input
 
-- Read the plan from disk; do not verify a chat copy.
-- Read `plans/artifacts/<task>/plan.meta.json` when it is present and reconcile
-  its goal, tier, phase IDs, dependencies, planned files, commands, risks, and
-  criteria with the Markdown plan. A missing sidecar for a newly created
-  non-trivial plan is `uncertain`; legacy Markdown-only plans remain valid when
-  the approved contract did not require metadata.
-- When `scripts/score-plan.ps1` is available, run it against the saved plan and
-  retain its aggregate score, six metrics, and issues as reproducible evidence.
-  It does not replace adversarial verification: inspect its inputs and challenge
-  the plan's claims independently.
-- Use the active repository's schema and template when present, otherwise the
-  bundled `controlflow-plan` format.
+- Read the plan and `plans/artifacts/<task-slug>/plan.meta.json` from disk; do
+  not verify a chat copy. The sidecar is the canonical contract.
+- Use the active repository's schema when present, otherwise the bundled
+  `schemas/plan-meta.schema.json`.
 
-## Tier Gating
+## Adversarial stance
 
-| Tier | Verification |
-| --- | --- |
-| `TRIVIAL` | Skip unless explicitly requested |
-| `SMALL` | Phase 1 |
-| `MEDIUM` | Phases 1-2 |
-| `LARGE` | Phases 1-3 |
+Try to break the plan, not defend it. Steelman the strongest rejection before
+accepting. Default to `uncertain` when evidence is insufficient; for each claim
+ask what would make it false, then check that condition. Every blocker cites a
+file, line, command output, or precise reasoning path. Planner confidence never
+substitutes for verifier confidence.
 
-Any unresolved applicable `HIGH` semantic risk requires all three phases.
+## Five questions
 
-## Adversarial Stance
+1. Can execution start from repository evidence?
+2. Are APIs/files/dependencies/schema assumptions verified against the repo?
+3. Are failure, migration, and rollback paths sufficient?
+4. Can success be proven by runnable checks?
+5. Is planned scope coherent with the requested outcome?
 
-Apply this stance to every phase; inline verification risks confirmation bias.
-
-- Try to break the plan, not defend it. Steelman the strongest rejection before
-  accepting.
-- Default to `uncertain` when evidence is insufficient. For each claim ask what
-  would make it false, then check that condition.
-- The planner is usually careful -> check this claim, not the planner's
-  reputation. It probably exists -> open the file or search for the symbol.
-  Execution can decide later -> flag it now if it blocks the first phases. The
-  risk is low -> name evidence or mark uncertain. I saw it earlier -> reconfirm
-  current repository state. The user can fix it later -> block now if it changes
-  scope or blast radius.
-- Every blocker cites a file, line, command output, or precise reasoning path.
-  Planner confidence never substitutes for verifier confidence.
-
-## Phase 1 - Structural Audit
-
-1. Referenced files, paths, tests, and commands are real.
-2. Objectives are clear and same-wave write ownership does not overlap.
-3. Acceptance criteria are measurable.
-4. Verification commands run without guessing.
-5. Destructive or migration-heavy work has recovery and the correct safety gate.
-6. Dependencies and external contracts are verified or explicitly uncertain.
-7. The Minimum Viable Change Ladder was applied before any new abstraction, new
-   dependency, or generated surface.
-8. The first phases can start without hidden context.
-9. Every requested outcome is implemented by a phase.
-10. Security, access-control, and operability risks have proportional gates.
-11. Every code-writing phase shows that each new abstraction is justified by
-    concrete duplication, a real boundary, or an established local pattern; if a
-    new abstraction is justified only by possible future use, require revision.
-12. Every code-writing phase plans XML documentation and business-logic comments
-    for business-significant APIs, rules, invariants, exceptions, calculations,
-    and rationale, using the dominant local language unless the user explicitly
-    requested another language.
-13. The plan includes a user-facing goal statement, no unresolved clarifying
-    questions that block execution, and success criteria are measurable enough to
-    prove whether that goal was achieved.
-
-## Phase 2 - Assumption and Mirage Check
-
-Apply the mirage catalog to every factual claim. Verify presence claims and
-search for missing error, validation, cleanup, migration, and security
-requirements. Unknown is `uncertain`, never an automatic pass.
-
-### Mirage Catalog
-
-Presence mirages: P1 Phantom API; P2 Version mismatch; P3 Pattern mismatch; P4
-Missing dependency; P5 File-path hallucination; P6 Schema mismatch; P7 Integration
-fantasy; P8 Scope creep; P9 Test-infrastructure mismatch; P10 Concurrency
-blindness.
-
-Absence mirages: A11 Missing error path; A12 Missing validation; A13 Missing edge
-case; A14 Missing requirement; A15 Missing cleanup; A16 Missing migration or
-rollback; A17 Missing security boundary.
-
-For each suspected mirage record the plan claim, pattern ID, repository evidence,
-classification, and required correction.
-
-## Phase 3 - Cold-Start Executability
-
-For the first relevant phases confirm: what is being changed; exact location;
-approach and preserved behavior; required inputs; expected outputs; dependencies;
-runnable verification command; concrete test behavior. Simulate opening the file,
-reading the existing pattern, choosing the dominant local language for
-documentation and comments, writing a failing test, running it, implementing the
-minimum change, rerunning tests, and refactoring. Stop at the first hard blocker
-and record it.
+Apply auth, concurrency, data-integrity, and operability scrutiny only when the
+task touches them — not as a fixed checklist for every plan.
 
 ## Verdict
 
-- `APPROVED`: all required phases pass and implementation may start.
-- `NEEDS_REVISION`: the design is viable but specific plan defects must be fixed.
-- `REJECTED`: the scope or architecture is not safely deliverable as written.
-- Include `failure_classification`: `fixable`, `needs_replan`, or `escalate` for
-  non-approval.
-- Write a compact verdict to `plans/artifacts/<task-slug>/verify-verdict.md`.
-- Do not start implementation until the verdict is `APPROVED`.
+Write a compact verdict to `plans/artifacts/<task-slug>/verify-verdict.md`:
 
-### Required Verdict Detail
+```
+Status: APPROVED | NEEDS_REVISION | REPLAN
 
-Every saved verdict includes these sections after findings:
+## Findings
+- location/evidence
+- problem
+- required correction
 
-1. `## Score Breakdown` with completeness, executability, dependency sanity,
-   evidence readiness, and risk handling scores or confidence bands.
-2. `## Revision Patch Instructions` with the section or metadata field to change,
-   the missing or incorrect content, and severity. For `APPROVED`, state that no
-   revision is required.
-3. `## Evidence` and `## Recommendation` that distinguish inspected files and
-   command output from inference.
+## Residual uncertainty
+...
 
-The verifier rubric and deterministic score-plan output are evidence, not
-replacements for native Codex approval, execution, sandbox, or review decisions.
-
-### Revision Request Handoff
-
-For a non-approved verdict (`NEEDS_REVISION` or `REJECTED`), write
-`plans/artifacts/<task-slug>/revision-request.json` with the structured finding,
-its `failure_classification`, and the mapped `next_action`. The request is
-required before the verifier can hand work back to the planner. After writing
-it, run the deterministic validator and require it to pass:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/validate-revision.ps1 `
-  -RepoRoot . `
-  -PlanPath plans/my-task-plan.md
+## Next action
+...
 ```
 
-An `APPROVED` verdict must not create a new revision request. A valid request
-from a prior cycle may remain as retained evidence and is validated as
-historical, not treated as the current action. The verifier records and
-validates this handoff, but does not apply plan changes automatically. It must
-not rewrite the plan or metadata as a side effect of producing a verdict; the
-native host and planner own any explicitly authorized revision.
+- `APPROVED` — implementation may start.
+- `NEEDS_REVISION` — viable but specific defects must be fixed; revise the plan.
+- `REPLAN` — scope or architecture is not safely deliverable as written; route
+  through the native host's replan path.
 
-## Native Host Boundary
+Do not start implementation until `APPROVED`. Do not rewrite the plan or
+metadata as a side effect of producing a verdict; the planner and native host
+own any explicitly authorized revision.
 
-- Do not spawn plugin verifier agents. If the user wants an isolated second
-  opinion, native `/review` or an explicitly requested native subagent
-  supplements this inline pass.
-- The host owns approvals, sandboxing, retries, and subagent lifecycle.
+## Boundary
+
+Do not spawn plugin verifier agents. For an isolated second opinion use native
+`/review` or an explicitly requested native subagent. The host owns approvals,
+sandboxing, retries, and subagent lifecycle.
+
+

@@ -1,0 +1,12 @@
+{
+  "max_artifact_bytes": 12000,
+  "task": "Plan a change to the token signing key rotation path.",
+  "tier": "MEDIUM",
+  "id": "auth-risk",
+  "must_detect": [
+    "access_control"
+  ],
+  "must_not_do": [
+    "risks\": {}"
+  ]
+}

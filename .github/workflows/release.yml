@@ -1,0 +1,103 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Semver version to package (e.g. 2.0.0). Ignored when triggered by a v* tag."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  cross-os:
+    name: Contracts on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show PowerShell version
+        shell: pwsh
+        run: $PSVersionTable
+      - name: Install Pester
+        shell: pwsh
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module -Name Pester -MinimumVersion 5.0 -Scope CurrentUser -Force -AllowClobber
+      - name: Run contract suite
+        shell: pwsh
+        run: ./tests/run-contract-tests.ps1 -UsePester
+
+  package:
+    name: Package and tag
+    needs: cross-os
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show PowerShell version
+        shell: pwsh
+        run: $PSVersionTable
+      - name: Install Pester
+        shell: pwsh
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module -Name Pester -MinimumVersion 5.0 -Scope CurrentUser -Force -AllowClobber
+      - name: Run contract suite
+        shell: pwsh
+        run: ./tests/run-contract-tests.ps1 -UsePester
+      - name: Resolve version
+        id: ver
+        shell: pwsh
+        run: |
+          $manifest = Get-Content .codex-plugin/plugin.json -Raw | ConvertFrom-Json
+          $v = if ($env:INPUT_VERSION -ne '') { $env:INPUT_VERSION } else { $manifest.version }
+          if ($env:GITHUB_REF -match 'refs/tags/v(.+)$') { $v = $Matches[1] }
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Output "Resolved version: $v"
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+      - name: Build package
+        shell: pwsh
+        run: |
+          $v = "${{ steps.ver.outputs.version }}"
+          $dist = "dist"
+          New-Item -ItemType Directory -Path $dist -Force | Out-Null
+          $staging = Join-Path $dist "controlflow-codex"
+          $include = @(".codex-plugin", "assets", "skills", "schemas", "scripts", "plans/templates", "plans/examples", "tests", "evals", "README.md", "CHANGELOG.md", "LICENSE")
+          foreach ($item in $include) {
+            if (Test-Path -LiteralPath $item) {
+              Copy-Item -LiteralPath $item -Destination $staging -Recurse -Force
+            }
+          }
+          Compress-Archive -Path (Join-Path $dist "controlflow-codex") -DestinationPath (Join-Path $dist "controlflow-codex-$v.zip") -Force
+          Write-Output "Packaged dist/controlflow-codex-$v.zip"
+      - name: Smoke-validate package
+        shell: pwsh
+        run: |
+          $v = "${{ steps.ver.outputs.version }}"
+          $zip = "dist/controlflow-codex-$v.zip"
+          if (-not (Test-Path -LiteralPath $zip)) { throw "Package zip missing: $zip" }
+          $manifest = Get-Content .codex-plugin/plugin.json -Raw | ConvertFrom-Json
+          if (-not (Get-ChildItem skills -Recurse -Filter SKILL.md)) { throw "Package missing skill files" }
+          Write-Output "Smoke OK: manifest version=$($manifest.version), skills present"
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: controlflow-codex-${{ steps.ver.outputs.version }}
+          path: dist/*.zip
+      - name: Create tag (workflow_dispatch only)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        shell: pwsh
+        run: |
+          $v = "${{ steps.ver.outputs.version }}"
+          git tag "v$v" 2>&1 | Out-Null
+          git push origin "v$v" 2>&1 | Out-Null
+          Write-Output "Pushed tag v$v"

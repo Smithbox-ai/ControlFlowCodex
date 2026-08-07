@@ -1,0 +1,105 @@
+{
+  "captured_at": "2026-08-07T21:59:43.1943839+03:00",
+  "variant": "v1-baseline",
+  "total_tracked_files": 81,
+  "total_tracked_bytes": 350654,
+  "skill_md": [
+    {
+      "file": "skills\\controlflow-plan\\SKILL.md",
+      "bytes": 15438,
+      "lines": 344
+    },
+    {
+      "file": "skills\\controlflow-review\\SKILL.md",
+      "bytes": 6681,
+      "lines": 131
+    },
+    {
+      "file": "skills\\controlflow-verify\\SKILL.md",
+      "bytes": 7870,
+      "lines": 162
+    }
+  ],
+  "skill_md_total_bytes": 29989.0,
+  "runtime_scripts": [
+    {
+      "file": "detect-drift.ps1",
+      "bytes": 8172,
+      "lines": 240
+    },
+    {
+      "file": "install.ps1",
+      "bytes": 4119,
+      "lines": 114
+    },
+    {
+      "file": "release.ps1",
+      "bytes": 8643,
+      "lines": 223
+    },
+    {
+      "file": "score-plan.ps1",
+      "bytes": 16983,
+      "lines": 400
+    },
+    {
+      "file": "snapshot-context.ps1",
+      "bytes": 11902,
+      "lines": 343
+    },
+    {
+      "file": "validate-plan.ps1",
+      "bytes": 14417,
+      "lines": 371
+    },
+    {
+      "file": "validate-revision.ps1",
+      "bytes": 8205,
+      "lines": 204
+    }
+  ],
+  "runtime_scripts_total_bytes": 72441.0,
+  "template_files": [
+    {
+      "file": "plans\\templates\\bugfix-plan-template.md",
+      "bytes": 2257
+    },
+    {
+      "file": "plans\\templates\\bugfix-plan-template.meta.json",
+      "bytes": 1225
+    },
+    {
+      "file": "plans\\templates\\docs-test-only-plan-template.md",
+      "bytes": 2288
+    },
+    {
+      "file": "plans\\templates\\docs-test-only-plan-template.meta.json",
+      "bytes": 1203
+    },
+    {
+      "file": "plans\\templates\\feature-plan-template.md",
+      "bytes": 2363
+    },
+    {
+      "file": "plans\\templates\\feature-plan-template.meta.json",
+      "bytes": 1188
+    },
+    {
+      "file": "plans\\templates\\migration-plan-template.md",
+      "bytes": 2415
+    },
+    {
+      "file": "plans\\templates\\migration-plan-template.meta.json",
+      "bytes": 1190
+    },
+    {
+      "file": "plans\\templates\\refactor-plan-template.md",
+      "bytes": 2278
+    },
+    {
+      "file": "plans\\templates\\refactor-plan-template.meta.json",
+      "bytes": 1196
+    }
+  ],
+  "template_file_count": 10
+}

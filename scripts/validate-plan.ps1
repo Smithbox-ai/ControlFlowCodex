@@ -5,277 +5,153 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$PlanPath,
 
-    [switch]$RequireVerifyVerdict,
+    [switch]$RequirePlanMetadata,
 
-    [switch]$RequirePlanMetadata
+    [switch]$RequireVerifyVerdict
 )
 
 $ErrorActionPreference = "Stop"
-
-function Read-Text([string]$Path) {
-    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
-        throw "Missing file: $Path"
-    }
-    return Get-Content -LiteralPath $Path -Raw
-}
-
-function Assert-Contains([string]$Content, [string]$Needle, [string]$Label) {
-    if ($Content -notmatch [regex]::Escape($Needle)) {
-        throw "Missing required section '$Label'"
-    }
-}
-
-function Assert-OrderedHeadings([string]$Content, [string[]]$Headings, [string]$Label) {
-    $lastIndex = -1
-    foreach ($heading in $Headings) {
-        $match = [regex]::Match($Content, "(?m)^" + [regex]::Escape($heading) + "\s*$")
-        if (-not $match.Success) {
-            throw "Missing required $Label heading '$heading'"
-        }
-        if ($match.Index -le $lastIndex) {
-            throw "$Label headings are out of order at '$heading'"
-        }
-        $lastIndex = $match.Index
-    }
-}
-
-function Assert-SemanticRiskRows([string]$Content) {
-    $required = @(
-        "data_volume",
-        "performance",
-        "concurrency",
-        "access_control",
-        "migration_rollback",
-        "dependency",
-        "operability"
-    )
-    $counts = @{}
-    foreach ($category in $required) {
-        $counts[$category] = 0
-    }
-
-    foreach ($line in ($Content -split "`r?`n")) {
-        if ($line -notmatch '^\s*\|') {
-            continue
-        }
-        $columns = @($line.Trim().Trim('|').Split('|') | ForEach-Object { $_.Trim().Trim('`') })
-        if ($columns.Count -lt 5) {
-            continue
-        }
-        $category = $columns[0].ToLowerInvariant()
-        if ($counts.ContainsKey($category)) {
-            $counts[$category]++
-        }
-    }
-
-    $errors = @()
-    foreach ($category in $required) {
-        if ($counts[$category] -ne 1) {
-            $errors += "$category=$($counts[$category])"
-        }
-    }
-    if ($errors.Count -gt 0) {
-        throw "Semantic Risk Review must contain every category exactly once: $($errors -join ', ')"
-    }
-}
-
-function Get-JsonProperty([object]$Object, [string]$Name, [string]$Label) {
-    if ($null -eq $Object) {
-        throw "Metadata $Label is missing"
-    }
-
-    $property = $Object.PSObject.Properties[$Name]
-    if ($null -eq $property) {
-        throw "Metadata $Label is missing required property '$Name'"
-    }
-
-    if ($property.Value -is [System.Array]) {
-        Write-Output -NoEnumerate $property.Value
-        return
-    }
-
-    return $property.Value
-}
 
 function Assert-NonEmptyString([object]$Value, [string]$Label) {
     if (-not ($Value -is [string]) -or [string]::IsNullOrWhiteSpace($Value)) {
         throw "Metadata $Label must be a non-empty string"
     }
-
     return $Value.Trim()
 }
 
-function Assert-NonEmptyStringArray([object]$Value, [string]$Label) {
-    if ($null -eq $Value -or $Value -is [string] -or -not ($Value -is [System.Array]) -or $Value.Count -eq 0) {
+function Assert-StringArray([object]$Value, [string]$Label, [bool]$RequireNonEmpty) {
+    if ($null -eq $Value -or $Value -is [string] -or -not ($Value -is [System.Array])) {
+        throw "Metadata $Label must be an array"
+    }
+    if ($RequireNonEmpty -and $Value.Count -eq 0) {
         throw "Metadata $Label must be a non-empty array"
     }
-
     foreach ($item in $Value) {
-        [void](Assert-NonEmptyString $item "$Label item")
+        if (-not ($item -is [string]) -or [string]::IsNullOrWhiteSpace($item)) {
+            throw "Metadata $Label must contain only non-empty strings"
+        }
     }
 }
 
-function Assert-PlanMetadata(
-    [string]$Content,
-    [string]$MetadataPath,
-    [string]$ExpectedPlanPath
-) {
+function Get-Property([object]$Object, [string]$Name) {
+    if ($null -eq $Object) { return $null }
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -eq $property) { return $null }
+    if ($property.Value -is [System.Array]) {
+        Write-Output -NoEnumerate $property.Value
+        return
+    }
+    return $property.Value
+}
+
+function Assert-PlanMetadata([string]$MetadataPath) {
     try {
         $metadata = Get-Content -LiteralPath $MetadataPath -Raw | ConvertFrom-Json
     } catch {
         throw "Metadata file is not valid JSON '$MetadataPath': $($_.Exception.Message)"
     }
 
-    $schemaVersion = Assert-NonEmptyString (Get-JsonProperty $metadata "schema_version" "document") "schema_version"
-    if ($schemaVersion -cne "1.0.0") {
-        throw "Metadata schema_version must be '1.0.0': $MetadataPath"
+    $schemaVersion = Assert-NonEmptyString (Get-Property $metadata "schema_version") "schema_version"
+    if ($schemaVersion -cne "2.0.0") {
+        throw "Metadata schema_version must be '2.0.0': $MetadataPath (got '$schemaVersion')"
     }
 
-    $metadataPlanPath = Assert-NonEmptyString (Get-JsonProperty $metadata "plan_path" "document") "plan_path"
-    $normalizedPlanPath = $metadataPlanPath.Replace('\', '/')
-    if ($normalizedPlanPath -cne $ExpectedPlanPath) {
-        throw "Metadata plan_path '$metadataPlanPath' must match '$ExpectedPlanPath'"
+    Assert-NonEmptyString (Get-Property $metadata "goal") "goal" | Out-Null
+
+    $tier = Get-Property $metadata "tier"
+    if ($tier -cnotin @("TRIVIAL", "SMALL", "MEDIUM", "LARGE")) {
+        throw "Metadata tier must be TRIVIAL, SMALL, MEDIUM, or LARGE (got '$tier')"
     }
 
-    $metadataGoal = Assert-NonEmptyString (Get-JsonProperty $metadata "goal" "document") "goal"
-    $goalMatch = [regex]::Match($Content, '(?mi)^Goal Statement:\s*(?<goal>.+?)\s*$')
-    if (-not $goalMatch.Success) {
-        throw "Plan must contain a Goal Statement before metadata can be required"
+    $baseline = Get-Property $metadata "baseline"
+    if ($null -eq $baseline -or -not ($baseline -is [pscustomobject])) {
+        throw "Metadata baseline must be an object with commit and dirty_paths"
     }
-    $planGoal = $goalMatch.Groups["goal"].Value.Trim()
-    if ($metadataGoal -cne $planGoal) {
-        throw "Metadata goal must match the Markdown Goal Statement"
-    }
+    Assert-NonEmptyString (Get-Property $baseline "commit") "baseline.commit" | Out-Null
+    Assert-StringArray (Get-Property $baseline "dirty_paths") "baseline.dirty_paths" $false
 
-    $metadataTier = Assert-NonEmptyString (Get-JsonProperty $metadata "complexity_tier" "document") "complexity_tier"
-    if ($metadataTier -notin @("TRIVIAL", "SMALL", "MEDIUM", "LARGE")) {
-        throw "Metadata complexity_tier must be TRIVIAL, SMALL, MEDIUM, or LARGE"
-    }
-    $tierMatch = [regex]::Match($Content, '(?mi)^\*\*Complexity Tier:\*\*\s*(?<tier>TRIVIAL|SMALL|MEDIUM|LARGE)\s*$')
-    if (-not $tierMatch.Success) {
-        throw "Plan must contain a supported Complexity Tier before metadata can be required"
-    }
-    if ($metadataTier -cne $tierMatch.Groups["tier"].Value) {
-        throw "Metadata complexity_tier must match the Markdown Complexity Tier"
-    }
+    Assert-StringArray (Get-Property $metadata "scope") "scope" $true
+    Assert-StringArray (Get-Property $metadata "criteria") "criteria" $true
+    Assert-StringArray (Get-Property $metadata "checks") "checks" $true
 
-    $phases = Get-JsonProperty $metadata "phases" "document"
-    if ($null -eq $phases -or $phases -is [string] -or -not ($phases -is [System.Array]) -or $phases.Count -eq 0) {
-        throw "Metadata phases must be a non-empty array"
-    }
-
-    $phaseIds = @()
-    foreach ($phase in $phases) {
-        $phaseId = Assert-NonEmptyString (Get-JsonProperty $phase "id" "phase") "phase id"
-        if ($phaseIds -contains $phaseId) {
-            throw "Metadata phases must use unique ids: '$phaseId'"
+    $risks = Get-Property $metadata "risks"
+    if ($null -ne $risks) {
+        if (-not ($risks -is [pscustomobject])) {
+            throw "Metadata risks must be an object keyed by risk category"
         }
-        $phaseIds += $phaseId
-
-        [void](Assert-NonEmptyString (Get-JsonProperty $phase "objective" "phase '$phaseId'") "phase '$phaseId' objective")
-        Assert-NonEmptyStringArray (Get-JsonProperty $phase "files" "phase '$phaseId'") "phase '$phaseId' files"
-        Assert-NonEmptyStringArray (Get-JsonProperty $phase "commands" "phase '$phaseId'") "phase '$phaseId' commands"
-        Assert-NonEmptyStringArray (Get-JsonProperty $phase "success_criteria" "phase '$phaseId'") "phase '$phaseId' success_criteria"
-
-        $phaseHeading = "(?m)^### Phase " + [regex]::Escape($phaseId) + "(?:\s|$)"
-        if ($Content -notmatch $phaseHeading) {
-            throw "Metadata phase '$phaseId' must match a Markdown phase heading"
-        }
-    }
-
-    foreach ($phase in $phases) {
-        $phaseId = Assert-NonEmptyString (Get-JsonProperty $phase "id" "phase") "phase id"
-        $dependencies = Get-JsonProperty $phase "dependencies" "phase '$phaseId'"
-        if ($null -eq $dependencies -or $dependencies -is [string] -or -not ($dependencies -is [System.Array])) {
-            throw "Metadata phase '$phaseId' dependencies must be an array"
-        }
-
-        foreach ($dependency in $dependencies) {
-            $dependencyId = Assert-NonEmptyString $dependency "phase '$phaseId' dependency"
-            if ($dependencyId -eq $phaseId) {
-                throw "Metadata phase '$phaseId' cannot depend on itself"
+        $allowedImpacts = @("LOW", "MEDIUM", "HIGH")
+        foreach ($category in $risks.PSObject.Properties.Name) {
+            $risk = $risks.PSObject.Properties[$category].Value
+            if (-not ($risk -is [pscustomobject])) {
+                throw "Metadata risks.$category must be an object with impact"
             }
-            if ($phaseIds -notcontains $dependencyId) {
-                throw "Metadata phase '$phaseId' depends on unknown phase '$dependencyId'"
+            $impact = Get-Property $risk "impact"
+            if ($impact -cnotin $allowedImpacts) {
+                throw "Metadata risks.$category.impact must be LOW, MEDIUM, or HIGH (got '$impact')"
+            }
+            $mitigation = Get-Property $risk "mitigation"
+            if ($null -ne $mitigation) {
+                Assert-NonEmptyString $mitigation "risks.$category.mitigation" | Out-Null
+            }
+            $extraRiskProps = @($risk.PSObject.Properties.Name | Where-Object { $_ -notin @("impact", "mitigation") })
+            if ($extraRiskProps.Count -gt 0) {
+                throw "Metadata risks.$category has unknown properties: $($extraRiskProps -join ', ')"
             }
         }
     }
 
-    $semanticRisks = Get-JsonProperty $metadata "semantic_risks" "document"
-    if ($null -eq $semanticRisks -or $semanticRisks -is [string] -or -not ($semanticRisks -is [System.Array])) {
-        throw "Metadata semantic_risks must be an array"
-    }
-
-    $requiredRiskCategories = @(
-        "data_volume",
-        "performance",
-        "concurrency",
-        "access_control",
-        "migration_rollback",
-        "dependency",
-        "operability"
-    )
-    $riskCounts = @{}
-    foreach ($category in $requiredRiskCategories) {
-        $riskCounts[$category] = 0
-    }
-
-    foreach ($risk in $semanticRisks) {
-        $category = Assert-NonEmptyString (Get-JsonProperty $risk "category" "semantic risk") "semantic risk category"
-        if (-not $riskCounts.ContainsKey($category)) {
-            throw "Metadata semantic risk category is unsupported: '$category'"
+    $phases = Get-Property $metadata "phases"
+    if ($null -ne $phases) {
+        if (-not ($phases -is [System.Array])) {
+            throw "Metadata phases must be an array"
         }
-        $riskCounts[$category]++
-
-        $applicability = Assert-NonEmptyString (Get-JsonProperty $risk "applicability" "semantic risk '$category'") "semantic risk '$category' applicability"
-        if ($applicability -notin @("applicable", "not_applicable")) {
-            throw "Metadata semantic risk '$category' has unsupported applicability '$applicability'"
-        }
-
-        $impact = Assert-NonEmptyString (Get-JsonProperty $risk "impact" "semantic risk '$category'") "semantic risk '$category' impact"
-        if ($impact -notin @("LOW", "MEDIUM", "HIGH")) {
-            throw "Metadata semantic risk '$category' has unsupported impact '$impact'"
-        }
-    }
-
-    $missingRiskCategories = @($requiredRiskCategories | Where-Object { $riskCounts[$_] -ne 1 })
-    if ($missingRiskCategories.Count -gt 0) {
-        throw "Metadata semantic_risks must contain every category exactly once: $($missingRiskCategories -join ', ')"
-    }
-
-    Assert-NonEmptyStringArray (Get-JsonProperty $metadata "success_criteria" "document") "success_criteria"
-}
-
-function Assert-VerdictScoreBreakdown([string]$Content) {
-    foreach ($dimension in @(
-        "completeness",
-        "executability",
-        "dependency sanity",
-        "evidence readiness",
-        "risk handling"
-    )) {
-        $pattern = "(?mi)^\s*\|\s*" + [regex]::Escape($dimension) + "\s*\|\s*(?<score>\d{1,3}\s*/\s*100|LOW|MEDIUM|HIGH|(?:0(?:\.\d+)?|1(?:\.0+)?))\s*\|"
-        $match = [regex]::Match($Content, $pattern)
-        if (-not $match.Success) {
-            throw "Verify verdict score dimension '$dimension' must include a 0-100 score or confidence band"
-        }
-
-        $score = $match.Groups["score"].Value
-        if ($score -match '^\d{1,3}\s*/\s*100$') {
-            $numericScore = [int]([regex]::Match($score, '^\d+').Value)
-            if ($numericScore -gt 100) {
-                throw "Verify verdict score dimension '$dimension' cannot exceed 100"
+        $phaseIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+        foreach ($phase in $phases) {
+            if (-not ($phase -is [pscustomobject])) {
+                throw "Each phase must be an object"
+            }
+            $id = Assert-NonEmptyString (Get-Property $phase "id") "phase.id"
+            if (-not $phaseIds.Add($id)) {
+                throw "Duplicate phase id: $id"
+            }
+            Assert-NonEmptyString (Get-Property $phase "objective") "phase.objective" | Out-Null
+            Assert-StringArray (Get-Property $phase "criteria") "phase.criteria" $true
+            $dependsOn = Get-Property $phase "depends_on"
+            if ($null -ne $dependsOn) { Assert-StringArray $dependsOn "phase.depends_on" $false }
+            $phaseScope = Get-Property $phase "scope"
+            if ($null -ne $phaseScope) { Assert-StringArray $phaseScope "phase.scope" $false }
+            $phaseChecks = Get-Property $phase "checks"
+            if ($null -ne $phaseChecks) { Assert-StringArray $phaseChecks "phase.checks" $false }
+            $extraPhaseProps = @($phase.PSObject.Properties.Name | Where-Object { $_ -notin @("id", "objective", "criteria", "depends_on", "scope", "checks") })
+            if ($extraPhaseProps.Count -gt 0) {
+                throw "Phase '$id' has unknown properties: $($extraPhaseProps -join ', ')"
             }
         }
+    }
+
+    $extraProps = @($metadata.PSObject.Properties.Name | Where-Object {
+        $_ -notin @("schema_version", "goal", "tier", "baseline", "scope", "criteria", "checks", "risks", "phases")
+    })
+    if ($extraProps.Count -gt 0) {
+        throw "Metadata has unknown properties: $($extraProps -join ', ')"
     }
 }
 
-function Assert-VerdictSectionHasContent([string]$Content, [string]$Heading, [string]$Label) {
-    $pattern = "(?ms)^" + [regex]::Escape($Heading) + "\s*$\s*(?<body>.*?)(?=^##\s|\z)"
-    $match = [regex]::Match($Content, $pattern)
-    if (-not $match.Success -or [string]::IsNullOrWhiteSpace($match.Groups["body"].Value)) {
-        throw "Verify verdict $Label must contain revision guidance"
+function Assert-VerifyVerdict([string]$VerdictPath) {
+    if (-not (Test-Path -LiteralPath $VerdictPath -PathType Leaf)) {
+        throw "Missing verify verdict: $VerdictPath"
     }
+    $content = Get-Content -LiteralPath $VerdictPath -Raw
+
+    $statusMatch = [regex]::Match($content, '(?mi)^\s*Status:\s*`?(APPROVED|NEEDS_REVISION|REPLAN)`?\s*$')
+    if (-not $statusMatch.Success) {
+        throw "Verify verdict status must be APPROVED, NEEDS_REVISION, or REPLAN"
+    }
+    if ($content -notmatch '(?mi)^\s*##\s*Findings\s*$') {
+        throw "Verify verdict must include a ## Findings section"
+    }
+
+    Write-Output "VALID verify verdict: $VerdictPath"
 }
 
 $repoRootResolved = (Resolve-Path $RepoRoot).Path
@@ -284,43 +160,10 @@ $planResolved = if ([System.IO.Path]::IsPathRooted($PlanPath)) {
 } else {
     [System.IO.Path]::GetFullPath((Join-Path $repoRootResolved $PlanPath))
 }
-$planContent = Read-Text $planResolved
 
-$requiredSections = @(
-    "# Plan:",
-    "**Status:**",
-    "**Agent:**",
-    "**Schema Version:**",
-    "**Complexity Tier:**",
-    "**Confidence:**",
-    "## Context & Analysis",
-    "## Design Decisions",
-    "## Implementation Phases",
-    "## Inter-Phase Contracts",
-    "## Open Questions",
-    "## Risks",
-    "## Semantic Risk Review",
-    "## Success Criteria",
-    "## Handoff"
-)
-foreach ($section in $requiredSections) {
-    Assert-Contains $planContent $section $section
+if (-not (Test-Path -LiteralPath $planResolved -PathType Leaf)) {
+    throw "Missing plan file: $planResolved"
 }
-
-if (($planContent -notmatch '(?m)^## Notes for Execution\s*$') -and
-    ($planContent -notmatch '(?m)^## Notes for Orchestration\s*$')) {
-    throw "Missing required execution-notes section"
-}
-
-Assert-OrderedHeadings $planContent @(
-    "## Progress",
-    "## Discoveries",
-    "## Decision Log",
-    "## Outcomes",
-    "## Idempotence & Recovery"
-) "lifecycle"
-
-Assert-SemanticRiskRows $planContent
 
 $planLeaf = Split-Path $planResolved -Leaf
 if ($planLeaf -notmatch '^(?<slug>.+)-plan\.md$') {
@@ -329,43 +172,17 @@ if ($planLeaf -notmatch '^(?<slug>.+)-plan\.md$') {
 $taskSlug = $Matches['slug']
 
 if ($RequirePlanMetadata) {
-    $relativePlanPath = $planResolved.Substring($repoRootResolved.Length).TrimStart([char]'\', [char]'/').Replace('\', '/')
     $metadataPath = Join-Path $repoRootResolved "plans/artifacts/$taskSlug/plan.meta.json"
     if (-not (Test-Path -LiteralPath $metadataPath -PathType Leaf)) {
         throw "Missing plan metadata: $metadataPath"
     }
-
-    Assert-PlanMetadata $planContent $metadataPath $relativePlanPath
+    Assert-PlanMetadata $metadataPath
     Write-Output "VALID plan metadata: $metadataPath"
 }
 
 if ($RequireVerifyVerdict) {
     $verdictPath = Join-Path $repoRootResolved "plans/artifacts/$taskSlug/verify-verdict.md"
-    $verdictContent = Read-Text $verdictPath
-    Assert-Contains $verdictContent "# ControlFlow Verify Verdict" "verify verdict title"
-    Assert-Contains $verdictContent "**Status:**" "verify verdict status"
-    Assert-Contains $verdictContent "## Findings" "verify verdict findings"
-    Assert-Contains $verdictContent "## Score Breakdown" "verify verdict score breakdown"
-    Assert-Contains $verdictContent "## Revision Patch Instructions" "verify verdict revision instructions"
-    Assert-Contains $verdictContent "## Evidence" "verify verdict evidence"
-    Assert-Contains $verdictContent "## Recommendation" "verify verdict recommendation"
-
-    Assert-VerdictScoreBreakdown $verdictContent
-    Assert-VerdictSectionHasContent $verdictContent "## Revision Patch Instructions" "revision patch instructions"
-
-    $statusMatch = [regex]::Match(
-        $verdictContent,
-        '(?mi)^\*\*Status:\*\*\s*`?(APPROVED|NEEDS_REVISION|REJECTED)`?\s*$'
-    )
-    if (-not $statusMatch.Success) {
-        throw "Verify verdict status must be APPROVED, NEEDS_REVISION, or REJECTED"
-    }
-    if (($statusMatch.Groups[1].Value -ne "APPROVED") -and
-        ($verdictContent -notmatch '(?mi)^\*\*Failure Classification:\*\*')) {
-        throw "Non-approved verify verdict requires Failure Classification"
-    }
-
-    Write-Output "VALID verify verdict: $verdictPath"
+    Assert-VerifyVerdict $verdictPath
 }
 
 Write-Output "VALID plan: $planResolved"

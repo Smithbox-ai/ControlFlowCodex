@@ -15,20 +15,28 @@ try {
     throw "Metadata schema is not valid JSON: $($_.Exception.Message)"
 }
 
-foreach ($requiredField in @("schema_version", "plan_path", "goal", "complexity_tier", "phases", "semantic_risks", "success_criteria")) {
+foreach ($requiredField in @("schema_version", "goal", "tier", "baseline", "scope", "criteria", "checks")) {
     if ($schema.required -notcontains $requiredField) {
         throw "Metadata schema does not require '$requiredField'"
     }
 }
+if ($schema.properties.schema_version.const -cne "2.0.0") {
+    throw "Metadata schema schema_version const must be '2.0.0'"
+}
 
 function Invoke-MetadataValidator(
     [string]$PlanPath,
-    [string]$ValidationRoot = $fixtureRoot
+    [string]$ValidationRoot = $fixtureRoot,
+    [switch]$RequireVerifyVerdict
 ) {
     $global:LASTEXITCODE = 0
     $caughtError = $null
     try {
-        $output = @(& $validatorPath -RepoRoot $ValidationRoot -PlanPath $PlanPath -RequirePlanMetadata 2>&1)
+        if ($RequireVerifyVerdict) {
+            $output = @(& $validatorPath -RepoRoot $ValidationRoot -PlanPath $PlanPath -RequirePlanMetadata -RequireVerifyVerdict 2>&1)
+        } else {
+            $output = @(& $validatorPath -RepoRoot $ValidationRoot -PlanPath $PlanPath -RequirePlanMetadata 2>&1)
+        }
     } catch {
         $caughtError = $_
         $output = @($_)
@@ -40,8 +48,8 @@ function Invoke-MetadataValidator(
     }
 }
 
-function Assert-ValidatorSucceeds([string]$PlanPath) {
-    $result = Invoke-MetadataValidator $PlanPath
+function Assert-ValidatorSucceeds([string]$PlanPath, [string]$ValidationRoot = $fixtureRoot) {
+    $result = Invoke-MetadataValidator $PlanPath $ValidationRoot
     if (-not $result.Succeeded) {
         throw "Expected metadata validation to succeed for '$PlanPath', but it failed: $($result.Output -join [Environment]::NewLine)"
     }
@@ -82,18 +90,9 @@ function Assert-MutatedVerdictFails([string]$Label, [scriptblock]$Mutation) {
 
         $verdictPath = Join-Path $temporaryRoot "plans/artifacts/valid-metadata/verify-verdict.md"
         & $Mutation $verdictPath
-
-        $global:LASTEXITCODE = 0
-        $caughtError = $null
-        try {
-            $output = @(& $validatorPath -RepoRoot $temporaryRoot -PlanPath "plans/valid-metadata-plan.md" -RequirePlanMetadata -RequireVerifyVerdict 2>&1)
-        } catch {
-            $caughtError = $_
-            $output = @($_)
-        }
-
-        if ($null -eq $caughtError -and $LASTEXITCODE -eq 0) {
-            throw "Expected metadata validation to reject '$Label', but it succeeded: $($output -join [Environment]::NewLine)"
+        $result = Invoke-MetadataValidator "plans/valid-metadata-plan.md" $temporaryRoot -RequireVerifyVerdict
+        if ($result.Succeeded) {
+            throw "Expected verdict validation to reject '$Label', but it succeeded: $($result.Output -join [Environment]::NewLine)"
         }
     } finally {
         if (Test-Path -LiteralPath $temporaryRoot) {
@@ -102,39 +101,17 @@ function Assert-MutatedVerdictFails([string]$Label, [scriptblock]$Mutation) {
     }
 }
 
-function Assert-RepositoryPlanSucceeds([string]$PlanPath) {
-    $global:LASTEXITCODE = 0
-    $caughtError = $null
-    try {
-        $output = @(& $validatorPath -RepoRoot $repoRoot -PlanPath $PlanPath -RequirePlanMetadata -RequireVerifyVerdict 2>&1)
-    } catch {
-        $caughtError = $_
-        $output = @($_)
-    }
-
-    if ($null -ne $caughtError -or $LASTEXITCODE -ne 0) {
-        throw "Expected repository plan validation to succeed for '$PlanPath', but it failed: $($output -join [Environment]::NewLine)"
-    }
-}
-
-function Assert-FixtureVerdictFails([string]$Label) {
-    $global:LASTEXITCODE = 0
-    $caughtError = $null
-    try {
-        $output = @(& $validatorPath -RepoRoot $fixtureRoot -PlanPath "plans/valid-metadata-plan.md" -RequirePlanMetadata -RequireVerifyVerdict 2>&1)
-    } catch {
-        $caughtError = $_
-        $output = @($_)
-    }
-
-    if ($null -eq $caughtError -and $LASTEXITCODE -eq 0) {
-        throw "Expected metadata validation to reject '$Label', but it succeeded: $($output -join [Environment]::NewLine)"
-    }
-}
-
+# Happy path: valid fixture passes with both metadata and verdict.
 Assert-ValidatorSucceeds "plans/valid-metadata-plan.md"
-Assert-ValidatorFails "plans/invalid-metadata-plan.md" "unknown phase dependency"
-Assert-FixtureVerdictFails "a verdict without score and revision sections"
+$result = Invoke-MetadataValidator "plans/valid-metadata-plan.md" $fixtureRoot -RequireVerifyVerdict
+if (-not $result.Succeeded) {
+    throw "Expected valid fixture verdict to succeed: $($result.Output -join [Environment]::NewLine)"
+}
+
+# Invalid fixture (bad tier + empty scope) is rejected.
+Assert-ValidatorFails "plans/invalid-metadata-plan.md" "invalid metadata (bad tier + empty scope)"
+
+# Metadata mutations that must fail.
 Assert-MutatedMetadataFails "an empty metadata goal" {
     param($metadataPath)
     $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
@@ -145,88 +122,95 @@ Assert-MutatedMetadataFails "malformed metadata JSON" {
     param($metadataPath)
     Set-Content -LiteralPath $metadataPath -Value "{" -Encoding UTF8
 }
-Assert-MutatedMetadataFails "a metadata tier that differs from Markdown" {
+Assert-MutatedMetadataFails "a bad tier" {
     param($metadataPath)
     $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
-    $metadata.complexity_tier = "MEDIUM"
+    $metadata.tier = "HUGE"
     $metadata | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $metadataPath -Encoding UTF8
 }
-Assert-MutatedVerdictFails "a score dimension without an assessment" {
-    param($verdictPath)
-    @'
-# ControlFlow Verify Verdict
+Assert-MutatedMetadataFails "a missing baseline commit" {
+    param($metadataPath)
+    $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
+    $metadata.baseline.PSObject.Properties.Remove("commit")
+    $metadata | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $metadataPath -Encoding UTF8
+}
+Assert-MutatedMetadataFails "an empty scope array" {
+    param($metadataPath)
+    $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
+    $metadata.scope = @()
+    $metadata | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $metadataPath -Encoding UTF8
+}
+Assert-MutatedMetadataFails "an empty checks array" {
+    param($metadataPath)
+    $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
+    $metadata.checks = @()
+    $metadata | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $metadataPath -Encoding UTF8
+}
+Assert-MutatedMetadataFails "a bad risk impact" {
+    param($metadataPath)
+    $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
+    $metadata.risks.concurrency.impact = "EXTREME"
+    $metadata | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $metadataPath -Encoding UTF8
+}
+Assert-MutatedMetadataFails "an unknown top-level property" {
+    param($metadataPath)
+    $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
+    $metadata | Add-Member -NotePropertyName rogue -NotePropertyValue "no"
+    $metadata | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $metadataPath -Encoding UTF8
+}
+Assert-MutatedMetadataFails "a duplicate phase id" {
+    param($metadataPath)
+    $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
+    $second = [pscustomobject]@{ id = "p1"; objective = "dup"; criteria = @("x") }
+    $metadata.phases = @($metadata.phases[0], $second)
+    $metadata.phases[1].id = "p1"
+    $metadata | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $metadataPath -Encoding UTF8
+}
+Assert-MutatedMetadataFails "a wrong schema_version" {
+    param($metadataPath)
+    $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
+    $metadata.schema_version = "1.0.0"
+    $metadata | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $metadataPath -Encoding UTF8
+}
 
-**Status:** APPROVED
+# Verdict mutations that must fail.
+Assert-MutatedVerdictFails "a verdict without a Status line" {
+    param($verdictPath)
+@"
+# ControlFlow Verify Verdict
 
 ## Findings
 
 - Fixture finding.
-
-## Score Breakdown
-
-| Dimension | Score | Rationale |
-| --- | --- | --- |
-| completeness | 90/100 | Complete. |
-| executability | 90/100 | Runnable. |
-| dependency sanity |  | Missing assessment. |
-| evidence readiness | 90/100 | Available. |
-| risk handling | 90/100 | Covered. |
-
-## Revision Patch Instructions
-
-- None required.
-
-## Evidence
-
-- Fixture evidence.
-
-## Recommendation
-
-Proceed.
-'@ | Set-Content -LiteralPath $verdictPath -Encoding UTF8
+"@ | Set-Content -LiteralPath $verdictPath -Encoding UTF8
 }
-Assert-MutatedVerdictFails "empty revision patch instructions" {
+Assert-MutatedVerdictFails "a verdict without a Findings section" {
     param($verdictPath)
-    @'
+@"
 # ControlFlow Verify Verdict
 
-**Status:** APPROVED
+Status: APPROVED
+
+No findings section here.
+"@ | Set-Content -LiteralPath $verdictPath -Encoding UTF8
+}
+Assert-MutatedVerdictFails "a verdict with an invalid status" {
+    param($verdictPath)
+@"
+# ControlFlow Verify Verdict
+
+Status: MAYBE
 
 ## Findings
 
 - Fixture finding.
-
-## Score Breakdown
-
-| Dimension | Score | Rationale |
-| --- | --- | --- |
-| completeness | 90/100 | Complete. |
-| executability | 90/100 | Runnable. |
-| dependency sanity | 90/100 | Sound. |
-| evidence readiness | 90/100 | Available. |
-| risk handling | 90/100 | Covered. |
-
-## Revision Patch Instructions
-
-## Evidence
-
-- Fixture evidence.
-
-## Recommendation
-
-Proceed.
-'@ | Set-Content -LiteralPath $verdictPath -Encoding UTF8
+"@ | Set-Content -LiteralPath $verdictPath -Encoding UTF8
 }
 
-foreach ($planPath in @(
-    "plans/plan-contract-foundation-plan.md",
-    "plans/examples/bugfix-plan.md",
-    "plans/examples/refactor-plan.md",
-    "plans/examples/migration-plan.md",
-    "plans/examples/feature-plan.md",
-    "plans/examples/docs-test-only-plan.md"
-)) {
-    Assert-RepositoryPlanSucceeds $planPath
+# Repository compact example validates end to end.
+$repoResult = Invoke-MetadataValidator "plans/examples/auth-migration-plan.md" $repoRoot -RequireVerifyVerdict
+if (-not $repoResult.Succeeded) {
+    throw "Expected repository auth-migration example to validate: $($repoResult.Output -join [Environment]::NewLine)"
 }
 
 Write-Output "VALID metadata validation contract"

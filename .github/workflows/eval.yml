@@ -1,0 +1,53 @@
+name: eval
+
+# Behavioral regression corpus. Model runs cost time/tokens, so this is nightly
+# or manual only. The structural contract suite runs in ci.yml on every PR.
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      runs_artifact:
+        description: "Name of a previously-uploaded runs artifact (optional). If absent, only case schemas are validated."
+        required: false
+        default: ""
+
+jobs:
+  eval:
+    name: Behavioral eval corpus
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show PowerShell version
+        shell: pwsh
+        run: $PSVersionTable
+      - name: Install Pester
+        shell: pwsh
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module -Name Pester -MinimumVersion 5.0 -Scope CurrentUser -Force -AllowClobber
+      - name: Structural contracts
+        shell: pwsh
+        run: ./tests/run-contract-tests.ps1 -UsePester
+      - name: Validate eval case schemas
+        shell: pwsh
+        run: ./evals/run-evals.ps1 -RepoRoot . -ValidateOnly
+      - name: Score runs artifact (if provided)
+        if: ${{ github.event.inputs.runs_artifact != '' }}
+        shell: pwsh
+        run: |
+          Write-Output "::notice::Download the runs artifact named '$env:RUNS_ARTIFACT' into ./eval-runs before this step to score them."
+          if (Test-Path ./eval-runs) {
+            ./evals/run-evals.ps1 -RepoRoot . -RunsDir ./eval-runs -Variant nightly
+          } else {
+            Write-Output "No ./eval-runs directory present; skipping scoring (schemas already validated)."
+          }
+        env:
+          RUNS_ARTIFACT: ${{ github.event.inputs.runs_artifact }}
+      - name: Upload eval results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results
+          path: evals/results/
+          if-no-files-found: ignore
