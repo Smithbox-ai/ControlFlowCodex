@@ -1,177 +1,109 @@
 <#
 .SYNOPSIS
-  Install or uninstall the ControlFlow for Codex plugin from this project
-  checkout into the home-local plugin directory.
-
+Install or uninstall a validated ControlFlow package transactionally.
 .DESCRIPTION
-  Install is a clean reinstall: it first removes any previously installed
-  plugin files at the target location, then copies the current shipped files
-  from this project directory. This avoids orphaned files when files are
-  renamed or removed between versions. Use -Uninstall to remove only.
-
-  The shipped surface mirrors what the release workflow packages: .codex-plugin,
-  assets, skills, schemas, scripts, plans/templates, plans/examples, tests,
-  evals, README.md, CHANGELOG.md, LICENSE. .git, .vs, dist, and other working
-  state are never copied.
-
-.PARAMETER HomeRoot
-  Home root that contains the plugins/ directory and .agents/plugins/
-  marketplace manifest. Defaults to $HOME.
-
-.PARAMETER PluginName
-  Installed plugin directory name. Defaults to controlflow-codex.
-
-.PARAMETER Uninstall
-  Remove the installed plugin files and its marketplace entry instead of
-  installing.
-
-.PARAMETER Force
-  Replace an existing installation without prompting, or remove without
-  prompting when uninstalling.
-
-.EXAMPLE
-  pwsh -File scripts/install.ps1 -Force
-  pwsh -File scripts/install.ps1 -Uninstall -Force
+Stages and validates the shared package inventory before replacing an owned
+installation. Marketplace publication uses an atomic file rename. On failure
+the prior plugin directory is restored; unrelated marketplace entries survive.
 #>
 param(
     [string]$HomeRoot = $HOME,
-
-    [string]$PluginName = "controlflow-codex",
-
+    [string]$PluginName = 'controlflow-codex',
     [switch]$Uninstall,
-
     [switch]$Force
 )
+$ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot 'ControlFlow.Package.psm1') -Force
 
-$ErrorActionPreference = "Stop"
+if ($PluginName -cnotmatch '^[a-z0-9][a-z0-9_-]{0,63}$' -or $PluginName -match '^(con|prn|aux|nul|com[0-9]|lpt[0-9])$') { throw 'PluginName must be a lowercase safe single directory name (not a reserved device name)' }
+$sourceRoot = Resolve-ControlFlowPath (Split-Path -Parent $PSScriptRoot)
+$homeDir = Resolve-ControlFlowPath $HomeRoot
+$pluginsDir = Assert-ControlFlowContained (Join-Path $homeDir 'plugins') $homeDir
+$target = Assert-ControlFlowContained (Join-Path $pluginsDir $PluginName) $pluginsDir
+$marketplaceDir = Assert-ControlFlowContained (Join-Path $homeDir '.agents/plugins') $homeDir
+$marketplacePath = Assert-ControlFlowContained (Join-Path $marketplaceDir 'marketplace.json') $marketplaceDir
+if ($sourceRoot -eq $target -or (Test-ControlFlowContained $target $sourceRoot) -or (Test-ControlFlowContained $sourceRoot $target)) { throw 'Source and installation target overlap' }
 
-$sourceRoot = Split-Path -Parent $PSScriptRoot
-$targetPluginsDir = Join-Path $HomeRoot "plugins"
-$targetPlugin = Join-Path $targetPluginsDir $PluginName
-$marketplaceDir = Join-Path (Join-Path $HomeRoot ".agents") "plugins"
-$marketplacePath = Join-Path $marketplaceDir "marketplace.json"
-
-# Shipped surface (kept in sync with .github/workflows/release.yml).
-$shippedItems = @(
-    ".codex-plugin",
-    "assets",
-    "skills",
-    "schemas",
-    "scripts",
-    "plans/templates",
-    "plans/examples",
-    "tests",
-    "evals",
-    "README.md",
-    "CHANGELOG.md",
-    "LICENSE"
-)
-
-function Remove-InstalledPluginFiles {
-    if (Test-Path -LiteralPath $targetPlugin) {
-        Remove-Item -LiteralPath $targetPlugin -Recurse -Force
-        Write-Output "Removed existing plugin files at $targetPlugin"
-    } else {
-        Write-Output "No existing plugin files found at $targetPlugin"
+# Parse existing registration before creating, moving or deleting plugin files.
+$hadMarketplace = Test-Path -LiteralPath $marketplacePath
+$marketplaceSnapshot = if ($hadMarketplace -and (Test-Path -LiteralPath $marketplacePath -PathType Leaf)) { [Convert]::ToBase64String([IO.File]::ReadAllBytes($marketplacePath)) } else { $null }
+if (Test-Path -LiteralPath $marketplacePath) {
+    if (-not (Test-Path -LiteralPath $marketplacePath -PathType Leaf)) { throw 'Marketplace path must be a file' }
+    $marketplace = Get-Content -LiteralPath $marketplacePath -Raw | ConvertFrom-Json -AsHashtable
+    if ($marketplace -isnot [Collections.IDictionary] -or -not $marketplace.ContainsKey('plugins') -or $marketplace.plugins -isnot [array]) { throw 'Marketplace must contain a plugins array' }
+    foreach ($entry in $marketplace.plugins) {
+        if ($entry -isnot [Collections.IDictionary] -or -not $entry.ContainsKey('name') -or $entry.name -isnot [string] -or [string]::IsNullOrWhiteSpace($entry.name)) { throw 'Marketplace plugin entry must have a name' }
     }
+} else {
+    $marketplace = @{ name = 'local-personal'; interface = @{ displayName = 'Local Personal Plugins' }; plugins = @() }
 }
 
-function Remove-MarketplaceEntry {
-    if (-not (Test-Path -LiteralPath $marketplacePath)) {
-        Write-Output "Marketplace file not found at $marketplacePath"
-        return
-    }
-    $marketplace = Get-Content -LiteralPath $marketplacePath -Raw | ConvertFrom-Json
-    $remaining = @()
-    if ($null -ne $marketplace.PSObject.Properties["plugins"] -and $marketplace.plugins) {
-        $remaining = @($marketplace.plugins | Where-Object { $_.name -ne $PluginName })
-    }
-    $marketplace.plugins = $remaining
-    $marketplace | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $marketplacePath -Encoding utf8
-    Write-Output "Removed $PluginName marketplace entry from $marketplacePath"
+# Keep this inode persistent: deleting a released lock could let a waiter lock
+# an old inode while another writer creates and locks a new one.
+New-Item -ItemType Directory -Path $marketplaceDir -Force | Out-Null
+$lockPath = Assert-ControlFlowContained (Join-Path $marketplaceDir '.controlflow-install.lock') $marketplaceDir
+$installationLock = [IO.File]::Open($lockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+try {
+    $marketplaceExistsNow = Test-Path -LiteralPath $marketplacePath
+    if ($marketplaceExistsNow -ne $hadMarketplace) { throw 'Marketplace changed during installer initialization; retry the operation' }
+    if ($hadMarketplace -and [Convert]::ToBase64String([IO.File]::ReadAllBytes($marketplacePath)) -cne $marketplaceSnapshot) { throw 'Marketplace changed during installer initialization; retry the operation' }
+
+$sourceManifest = Get-Content -LiteralPath (Join-Path $sourceRoot 'plugin.json') -Raw | ConvertFrom-Json -AsHashtable
+if (-not $sourceManifest.ContainsKey('name') -or $sourceManifest.name -ne 'controlflow-codex') { throw 'Source package has an invalid ControlFlow identity' }
+$hadTarget = Test-Path -LiteralPath $target
+if ($hadTarget) {
+    if (-not (Test-Path -LiteralPath $target -PathType Container)) { throw 'Existing plugin target must be a directory' }
+    Assert-ControlFlowTree $target
+    $ownedManifest = Join-Path $target 'plugin.json'
+    if (-not (Test-Path -LiteralPath $ownedManifest -PathType Leaf)) { $ownedManifest = Join-Path $target '.codex-plugin/plugin.json' }
+    if (-not (Test-Path -LiteralPath $ownedManifest -PathType Leaf)) { throw 'Existing plugin target is not owned by a plugin manifest' }
+    $owned = Get-Content -LiteralPath $ownedManifest -Raw | ConvertFrom-Json -AsHashtable
+    if (-not $owned.ContainsKey('name') -or $owned.name -cne $sourceManifest.name) { throw 'Existing plugin target belongs to a different plugin' }
+    if (-not $Force) { throw 'Existing plugin target requires -Force to replace or uninstall' }
 }
 
-function Set-MarketplaceEntry {
+$marketplace.plugins = @($marketplace.plugins | Where-Object { $_.name -cne $PluginName })
+if (-not $Uninstall) {
+    $marketplace.plugins += @{ name = $PluginName; source = @{ source = 'local'; path = "./plugins/$PluginName" }; policy = @{ installation = 'AVAILABLE'; authentication = 'ON_INSTALL' }; category = 'Coding' }
+    $null = Assert-ControlFlowPackage $sourceRoot
+}
+$id = [guid]::NewGuid().ToString('N')
+$stage = Assert-ControlFlowContained (Join-Path $pluginsDir ".$PluginName-stage-$id") $pluginsDir
+$backup = Assert-ControlFlowContained (Join-Path $pluginsDir ".$PluginName-backup-$id") $pluginsDir
+$marketTemp = Assert-ControlFlowContained (Join-Path $marketplaceDir ".marketplace-$id.tmp") $marketplaceDir
+$oldMoved = $false
+$newMoved = $false
+$published = $false
+try {
+    New-Item -ItemType Directory -Path $pluginsDir -Force | Out-Null
     New-Item -ItemType Directory -Path $marketplaceDir -Force | Out-Null
-    if (Test-Path -LiteralPath $marketplacePath) {
-        $marketplace = Get-Content -LiteralPath $marketplacePath -Raw | ConvertFrom-Json
-    } else {
-        $marketplace = [pscustomobject]@{
-            name      = "local-personal"
-            interface = [pscustomobject]@{ displayName = "Local Personal Plugins" }
-            plugins   = @()
-        }
+    if (-not $Uninstall) { Copy-ControlFlowPackage $sourceRoot $stage }
+    # Prepare full registration before changing the installed directory.
+    $marketplace | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $marketTemp -Encoding utf8
+    if ($hadTarget) { Move-ControlFlowTree $target $backup $pluginsDir; $oldMoved = $true }
+    if (-not $Uninstall) { Move-ControlFlowTree $stage $target $pluginsDir; $newMoved = $true }
+    $null = Assert-ControlFlowContained $marketplacePath $marketplaceDir
+    $null = Assert-ControlFlowContained $marketTemp $marketplaceDir
+    [IO.File]::Move($marketTemp, $marketplacePath, $true)
+    $published = $true
+} catch {
+    $failure = $_
+    if (-not $published) {
+        if ($newMoved) { Remove-ControlFlowTree $target $pluginsDir }
+        if ($oldMoved) { Move-ControlFlowTree $backup $target $pluginsDir }
     }
-    if (-not $marketplace.PSObject.Properties["plugins"]) {
-        $marketplace | Add-Member -NotePropertyName plugins -NotePropertyValue @() -Force
-    }
-    $remaining = @($marketplace.plugins | Where-Object { $_.name -ne $PluginName })
-    $remaining += [pscustomobject]@{
-        name     = $PluginName
-        source   = [pscustomobject]@{ source = "local"; path = "./plugins/$PluginName" }
-        policy   = [pscustomobject]@{ installation = "AVAILABLE"; authentication = "ON_INSTALL" }
-        category = "Coding"
-    }
-    $marketplace.plugins = $remaining
-    $marketplace | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $marketplacePath -Encoding utf8
-    Write-Output "Updated marketplace at $marketplacePath"
+    throw $failure
+} finally {
+    if (Test-Path -LiteralPath $stage) { Remove-ControlFlowTree $stage $pluginsDir }
+    if (Test-Path -LiteralPath $marketTemp) { $safeTemp = Assert-ControlFlowContained $marketTemp $marketplaceDir; Remove-Item -LiteralPath $safeTemp -Force }
 }
-
-function Copy-ShippedFiles {
-    New-Item -ItemType Directory -Path $targetPlugin -Force | Out-Null
-    foreach ($item in $shippedItems) {
-        $src = Join-Path $sourceRoot $item
-        if (-not (Test-Path -LiteralPath $src)) {
-            Write-Output "Skipping missing source item: $item"
-            continue
-        }
-        $dest = Join-Path $targetPlugin $item
-        $destParent = Split-Path $dest -Parent
-        if (-not (Test-Path -LiteralPath $destParent)) {
-            New-Item -ItemType Directory -Path $destParent -Force | Out-Null
-        }
-        Copy-Item -LiteralPath $src -Destination $destParent -Recurse -Force
-    }
-    Write-Output "Copied plugin files from $sourceRoot to $targetPlugin"
+# After publication, a backup cleanup failure must not roll back a valid new
+# registration. Keep the recoverable backup and identify its path to the caller.
+if ($published -and $oldMoved) {
+    try { Remove-ControlFlowTree $backup $pluginsDir } catch { Write-Warning "Installed registration is valid; retained backup $backup ($($_.Exception.Message))" }
 }
-
-function Assert-InstallSmoke {
-    $manifest = Join-Path $targetPlugin ".codex-plugin/plugin.json"
-    if (-not (Test-Path -LiteralPath $manifest)) {
-        throw "Install smoke failed: missing $manifest"
-    }
-    try {
-        $null = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
-    } catch {
-        throw "Install smoke failed: plugin.json is not valid JSON: $($_.Exception.Message)"
-    }
-    $skillsDir = Join-Path $targetPlugin "skills"
-    if (-not (Test-Path -LiteralPath $skillsDir) -or -not (Get-ChildItem -LiteralPath $skillsDir -Recurse -Filter SKILL.md)) {
-        throw "Install smoke failed: no SKILL.md files under $skillsDir"
-    }
-    Write-Output "Install smoke OK: $targetPlugin"
+if ($Uninstall) { Write-Output "Uninstalled $PluginName" } else { Write-Output "Installed $PluginName to $target" }
+$global:LASTEXITCODE = 0
+} finally {
+    $installationLock.Dispose()
 }
-
-if ($Uninstall) {
-    if ((Test-Path -LiteralPath $targetPlugin) -and -not $Force) {
-        $answer = Read-Host "Remove $targetPlugin? Type YES to continue"
-        if ($answer -ne "YES") {
-            Write-Output "Uninstall cancelled."
-            exit 0
-        }
-    }
-    Remove-InstalledPluginFiles
-    Remove-MarketplaceEntry
-    Write-Output "Uninstalled $PluginName"
-    exit 0
-}
-
-if ((Test-Path -LiteralPath $targetPlugin) -and -not $Force) {
-    throw "Target plugin already exists at $targetPlugin. Re-run with -Force to replace it (old files are removed first)."
-}
-
-Remove-InstalledPluginFiles
-Copy-ShippedFiles
-Set-MarketplaceEntry
-Assert-InstallSmoke
-Write-Output "Installed $PluginName to $targetPlugin"

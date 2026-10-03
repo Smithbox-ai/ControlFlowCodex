@@ -1,0 +1,30 @@
+{
+  "hooks": {
+    "SessionStart": [{
+      "matcher": "startup|resume|compact",
+      "hooks": [{
+        "type": "command",
+        "command": "pwsh -NoProfile -Command \"& ([IO.Path]::Combine([Environment]::GetEnvironmentVariable('PLUGIN_ROOT'), 'scripts', 'invoke-hook.ps1')) -Event SessionStart\"",
+        "commandWindows": "pwsh -NoProfile -Command \"& ([IO.Path]::Combine([Environment]::GetEnvironmentVariable('PLUGIN_ROOT'), 'scripts', 'invoke-hook.ps1')) -Event SessionStart\"",
+        "timeout": 20,
+        "additionalContextLimit": 500
+      }]
+    }],
+    "Stop": [{
+      "hooks": [{
+        "type": "command",
+        "command": "pwsh -NoProfile -Command \"& ([IO.Path]::Combine([Environment]::GetEnvironmentVariable('PLUGIN_ROOT'), 'scripts', 'invoke-hook.ps1')) -Event Stop\"",
+        "commandWindows": "pwsh -NoProfile -Command \"& ([IO.Path]::Combine([Environment]::GetEnvironmentVariable('PLUGIN_ROOT'), 'scripts', 'invoke-hook.ps1')) -Event Stop\"",
+        "timeout": 30
+      }]
+    }],
+    "Interrupt": [{
+      "hooks": [{
+        "type": "command",
+        "command": "pwsh -NoProfile -Command \"& ([IO.Path]::Combine([Environment]::GetEnvironmentVariable('PLUGIN_ROOT'), 'scripts', 'invoke-hook.ps1')) -Event Interrupt\"",
+        "commandWindows": "pwsh -NoProfile -Command \"& ([IO.Path]::Combine([Environment]::GetEnvironmentVariable('PLUGIN_ROOT'), 'scripts', 'invoke-hook.ps1')) -Event Interrupt\"",
+        "timeout": 3
+      }]
+    }]
+  }
+}

@@ -1,7 +1,7 @@
 {
   "name": "controlflow-codex",
-  "version": "2.0.0",
-  "description": "Compact evidence-first planning layer for native Codex: durable execution contracts, adversarial preflight, and plan-conformance review. 3 explicit skills, 0 subagents, 2 deterministic scripts.",
+  "version": "3.0.0-rc.1",
+  "description": "Explicit native Codex reliability layer: adaptive task contracts, captured evidence, completion gates, and bounded lifecycle hooks.",
   "author": {
     "name": "Smithbox-ai",
     "url": "https://github.com/Smithbox-ai/ControlFlowCodex"
@@ -22,8 +22,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "ControlFlow for Codex",
-    "shortDescription": "Evidence-first planning layer over native Codex",
-    "longDescription": "ControlFlow persists intent and evidence; Codex runs execution. Three explicit-only skills add a durable execution contract, adversarial preflight, and plan-conformance review on top of native /plan, /review, execution, sandbox, approvals, subagents, and memories. No duplicated agent runtime, no scorer, no revision state machine, no custom subagents.",
+    "shortDescription": "Explicit repository work with current evidence",
+    "longDescription": "ControlFlow v3 adds an explicit entry, adaptive contracts, actual check evidence, selective commit and completion gates, and bounded local lifecycle hooks. Native Codex retains tools, sandbox, permissions, review, and agent lifecycle. Candidate release; host callbacks and behavioral outcomes require separate validation.",
     "developerName": "Smithbox-ai",
     "category": "Coding",
     "capabilities": [
@@ -35,13 +35,14 @@
     "privacyPolicyURL": "https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement",
     "termsOfServiceURL": "https://docs.github.com/en/site-policy/github-terms/github-terms-of-service",
     "defaultPrompt": [
-      "Use /plan for context, then $controlflow-plan to persist a durable execution contract for this non-trivial task.",
-      "Use $controlflow-verify to adversarially verify the saved contract before implementation.",
-      "After implementation, use /review then $controlflow-review to compare the diff with the approved plan."
+      "Use $controlflow-codex:controlflow to complete this repository task with appropriate evidence.",
+      "Use $controlflow-codex:controlflow-plan to persist a saved contract after native planning.",
+      "Use $controlflow-codex:controlflow-verify or $controlflow-codex:controlflow-review for explicit review."
     ],
     "brandColor": "#0F766E",
     "composerIcon": "./assets/controlflow-codex-logo.svg",
     "logo": "./assets/controlflow-codex-logo.svg",
     "screenshots": []
-  }
+  },
+  "hooks": "./hooks/hooks.json"
 }

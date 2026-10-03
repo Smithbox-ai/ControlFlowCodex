@@ -1,6 +1,6 @@
 ---
 name: controlflow-verify
-description: "Adversarially verify a saved ControlFlow plan before implementation. Invoke explicitly with $controlflow-verify."
+description: "Use when the user explicitly invokes $controlflow-verify for preflight of a saved repository contract."
 ---
 
 # ControlFlow Verify
@@ -8,12 +8,33 @@ description: "Adversarially verify a saved ControlFlow plan before implementatio
 Verify a saved plan before implementation. The checks run inline with zero
 shipped subagents. Invoke explicitly with `$controlflow-verify`.
 
+Reflect the preflight result in available native `update_plan`, following
+[progress](../controlflow/references/progress.md). Rejected, waiting, or
+unverified work stays incomplete. If unavailable, report textual progress;
+native TODO status is not approval or evidence.
+
+## V3 binding
+
+Read the canonical `plan.meta.json`; SMALL may have no Markdown rationale.
+For schema 3.0.0 use `scripts/validate-contract.ps1 -Path <contract>`, then the
+five questions below. MEDIUM/LARGE require APPROVED preflight before edits.
+Write the review rationale inside the active run directory and record
+`{"type":"preflight","status":"APPROVED"}` through `scripts/update-run.ps1`
+with explicit RepoRoot, RunPath, and EventPath. Runtime binds the approval to
+the current contract. An unbound verdict is a draft, not gate evidence.
+
+Reject invented criterion coverage, unsafe adoption of initial user hunks,
+unresolved product-critical choices, and missing required independent review.
+Repair/replan before approval. Optional native readers follow the entry's tier
+limits, have precise questions, and their usage counts; no plugin agent runtime.
+Old v2 verdicts never activate v3 gates. See
+[execution](../controlflow/references/execution.md).
+
 ## Input
 
-- Read the plan and `plans/artifacts/<task-slug>/plan.meta.json` from disk; do
-  not verify a chat copy. The sidecar is the canonical contract.
-- Use the active repository's schema when present, otherwise the bundled
-  `schemas/plan-meta.schema.json`.
+- Read `plans/artifacts/<task-slug>/plan.meta.json` and the active run from disk;
+  do not verify a chat copy. The JSON contract is canonical.
+- Validate against the bundled `schemas/plan-meta-v3.schema.json`.
 
 ## Adversarial stance
 
@@ -36,7 +57,7 @@ task touches them — not as a fixed checklist for every plan.
 
 ## Verdict
 
-Write a compact verdict to `plans/artifacts/<task-slug>/verify-verdict.md`:
+Write a compact review rationale inside the active run directory:
 
 ```
 Status: APPROVED | NEEDS_REVISION | REPLAN

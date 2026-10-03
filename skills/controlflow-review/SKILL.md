@@ -1,6 +1,6 @@
 ---
 name: controlflow-review
-description: "Review an implementation against its approved ControlFlow plan for conformance and evidence. Invoke explicitly with $controlflow-review."
+description: "Use when the user explicitly invokes $controlflow-review for conformance of a repository implementation to its saved contract."
 ---
 
 # ControlFlow Review
@@ -9,19 +9,46 @@ Add the ControlFlow-specific layer after implementation. Native `/review` is the
 general code-review pass; consume its results rather than repeating them. Invoke
 explicitly with `$controlflow-review`.
 
+After review/repair milestones, synchronize available native `update_plan`
+under [progress](../controlflow/references/progress.md). Reopen work when checks
+or review invalidate completion. If unavailable, use honest textual progress;
+TODO completion does not satisfy the delivery gate.
+
+## V3 evidence
+
+For schema 3.0.0 read the active run, current `plan.meta.json`, and immutable
+captures. SMALL needs a direct delivery gate; MEDIUM/LARGE also require this
+final conformance approval after native generic review and repairs. Use
+`completion-gate.ps1 -RepoRoot <repo> -RunPath <run>` for current scope,
+ownership, provenance/freshness, coverage, and blockers. A required commit adds
+candidate and actual SHA/tree checks; commit only on explicit user request.
+Before final approval, REVIEW_MISSING is expected; record the actual review
+after the other conformance checks, then require a fresh PASS.
+
+Assess whether each executable check really proves its criterion. The ledger
+cannot establish semantic truth of an LLM's PROVEN claim. Missing independent
+review required by the contract remains a blocker. Write concise rationale
+inside the run, then record `{"type":"review","status":"APPROVED"}` through
+`update-run.ps1`. Runtime binds it to the current contract and source; later
+code edits require checks and final review again. Resolve blockers only with
+actual repair evidence. Run completion-gate again before final claims.
+
+Do not modify immutable state/captures or reuse an old prose verdict to satisfy
+a gate. A v2 contract does not become an active v3 run. A structured clarification, denial, cancel,
+interruption, Plan Mode, or BLOCKED ends the turn without DONE.
+
 ## Input
 
-- Read the approved `plans/<task-slug>-plan.md` and
-  `plans/artifacts/<task-slug>/plan.meta.json` (the canonical contract).
+- Read the approved `plans/artifacts/<task-slug>/plan.meta.json` and its active
+  run. MEDIUM/LARGE also have a brief rationale inside the run directory.
 - Read the aggregate diff. If native `/review` results are available, consume
   them.
 
 ## Four checks
 
-1. **Actual scope vs approved scope** — run
-   `scripts/detect-drift.ps1 -RepoRoot . -PlanPath plans/<task-slug>-plan.md`
-   to classify changed paths as `planned` or `unplanned`; then decide
-   semantically whether each unplanned change is justified.
+1. **Actual scope vs approved scope** — inspect the current completion gate's
+   scope and ownership observations. Initial dirty files are not exemptions;
+   new edits in them and out-of-scope implementation require resolution.
 2. **Success criteria vs evidence** — did the runnable `checks` pass, and do
    they prove the `criteria`?
 3. **Unplanned externally visible behavior** — any change to APIs, endpoints, or

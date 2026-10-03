@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Semver version to package (e.g. 2.0.0). Ignored when triggered by a v* tag."
+        description: "Semver version to package (e.g. 3.0.0-rc.1). Ignored when triggered by a v* tag."
         required: false
         default: ""
 
@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [windows-latest, ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
       - name: Show PowerShell version
@@ -34,7 +34,11 @@ jobs:
           Install-Module -Name Pester -MinimumVersion 5.0 -Scope CurrentUser -Force -AllowClobber
       - name: Run contract suite
         shell: pwsh
-        run: ./tests/run-contract-tests.ps1 -UsePester
+        run: |
+          ./tests/run-contract-tests.ps1 -UsePester
+          if ($LASTEXITCODE -ne 0) { throw "Contract suite failed: $LASTEXITCODE" }
+          ./tests/package.tests.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Package roundtrip failed: $LASTEXITCODE" }
 
   package:
     name: Package and tag
@@ -52,14 +56,17 @@ jobs:
           Install-Module -Name Pester -MinimumVersion 5.0 -Scope CurrentUser -Force -AllowClobber
       - name: Run contract suite
         shell: pwsh
-        run: ./tests/run-contract-tests.ps1 -UsePester
+        run: |
+          ./tests/run-contract-tests.ps1 -UsePester
+          if ($LASTEXITCODE -ne 0) { throw "Contract suite failed: $LASTEXITCODE" }
       - name: Resolve version
         id: ver
         shell: pwsh
         run: |
-          $manifest = Get-Content .codex-plugin/plugin.json -Raw | ConvertFrom-Json
+          $manifest = Get-Content plugin.json -Raw | ConvertFrom-Json
           $v = if ($env:INPUT_VERSION -ne '') { $env:INPUT_VERSION } else { $manifest.version }
           if ($env:GITHUB_REF -match 'refs/tags/v(.+)$') { $v = $Matches[1] }
+          if ($v -cne $manifest.version) { throw "Release version $v differs from manifest $($manifest.version)" }
           "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           Write-Output "Resolved version: $v"
         env:
@@ -68,26 +75,8 @@ jobs:
         shell: pwsh
         run: |
           $v = "${{ steps.ver.outputs.version }}"
-          $dist = "dist"
-          New-Item -ItemType Directory -Path $dist -Force | Out-Null
-          $staging = Join-Path $dist "controlflow-codex"
-          $include = @(".codex-plugin", "assets", "skills", "schemas", "scripts", "plans/templates", "plans/examples", "tests", "evals", "README.md", "CHANGELOG.md", "LICENSE")
-          foreach ($item in $include) {
-            if (Test-Path -LiteralPath $item) {
-              Copy-Item -LiteralPath $item -Destination $staging -Recurse -Force
-            }
-          }
-          Compress-Archive -Path (Join-Path $dist "controlflow-codex") -DestinationPath (Join-Path $dist "controlflow-codex-$v.zip") -Force
-          Write-Output "Packaged dist/controlflow-codex-$v.zip"
-      - name: Smoke-validate package
-        shell: pwsh
-        run: |
-          $v = "${{ steps.ver.outputs.version }}"
-          $zip = "dist/controlflow-codex-$v.zip"
-          if (-not (Test-Path -LiteralPath $zip)) { throw "Package zip missing: $zip" }
-          $manifest = Get-Content .codex-plugin/plugin.json -Raw | ConvertFrom-Json
-          if (-not (Get-ChildItem skills -Recurse -Filter SKILL.md)) { throw "Package missing skill files" }
-          Write-Output "Smoke OK: manifest version=$($manifest.version), skills present"
+          ./scripts/package.ps1 -OutputDirectory dist -Version $v
+          if ($LASTEXITCODE -ne 0) { throw "Extracted archive smoke failed: $LASTEXITCODE" }
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:
@@ -98,6 +87,8 @@ jobs:
         shell: pwsh
         run: |
           $v = "${{ steps.ver.outputs.version }}"
-          git tag "v$v" 2>&1 | Out-Null
-          git push origin "v$v" 2>&1 | Out-Null
+          git tag "v$v"
+          if ($LASTEXITCODE -ne 0) { throw "Tag creation failed: $LASTEXITCODE" }
+          git push origin "v$v"
+          if ($LASTEXITCODE -ne 0) { throw "Tag push failed: $LASTEXITCODE" }
           Write-Output "Pushed tag v$v"

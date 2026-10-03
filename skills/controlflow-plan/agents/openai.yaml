@@ -1,7 +1,7 @@
 interface:
   display_name: "ControlFlow Plan"
   short_description: "Persist a durable execution contract after native /plan"
-  default_prompt: "Use $controlflow-plan to persist a durable ControlFlow plan for this repository task after native /plan."
+  default_prompt: "Use $controlflow-codex:controlflow-plan to persist a durable ControlFlow plan for this repository task after native /plan."
 
 policy:
   allow_implicit_invocation: false

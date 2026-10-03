@@ -1,0 +1,6 @@
+interface:
+  display_name: "ControlFlow"
+  short_description: "Complete repository work with current evidence"
+  default_prompt: "Use $controlflow-codex:controlflow to carry this repository task through appropriate checks and truthful completion."
+policy:
+  allow_implicit_invocation: false

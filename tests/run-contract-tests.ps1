@@ -24,9 +24,19 @@ function Invoke-ContractScript([string]$Name) {
 
 Invoke-ContractScript "controlflow-skill-contract.tests.ps1"
 Invoke-ContractScript "template-contract.tests.ps1"
-Invoke-ContractScript "validate-plan.tests.ps1"
-Invoke-ContractScript "detect-drift.tests.ps1"
 Invoke-ContractScript "installer-smoke.tests.ps1"
+Invoke-ContractScript "git-evidence.tests.ps1"
+Invoke-ContractScript "contract-v3.tests.ps1"
+Invoke-ContractScript "run-evidence.tests.ps1"
+Invoke-ContractScript "interrupt-evidence.tests.ps1"
+Invoke-ContractScript "gates.tests.ps1"
+Invoke-ContractScript "hook-policy.tests.ps1"
+Invoke-ContractScript "hooks.tests.ps1"
+Invoke-ContractScript "entry-skill.tests.ps1"
+Invoke-ContractScript "package.tests.ps1"
+Invoke-ContractScript "e2e-evals.tests.ps1"
+Invoke-ContractScript "e2e-release-grading.tests.ps1"
+Invoke-ContractScript "e2e-cache.tests.ps1"
 
 if ($UsePester) {
     $invokePester = Get-Command Invoke-Pester -ErrorAction SilentlyContinue

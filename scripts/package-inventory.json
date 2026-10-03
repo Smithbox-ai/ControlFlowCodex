@@ -1,0 +1,38 @@
+{
+  "required": [
+    "plugin.json",
+    ".codex-plugin",
+    "assets",
+    "skills",
+    "schemas",
+    "scripts",
+    "plans/templates/plan.meta.v3.json",
+    "plans/examples/small-v3.meta.json",
+    "tests",
+    "evals",
+    "README.md",
+    "docs/hooks.md",
+    "docs/migration-v3.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "optional": ["hooks"],
+  "exclude": ["evals/results"],
+  "obsolete": [
+    "scripts/validate-plan.ps1",
+    "scripts/detect-drift.ps1",
+    "schemas/plan-meta.schema.json",
+    "plans/templates/plan.md",
+    "plans/templates/plan.meta.json",
+    "plans/examples/auth-migration-plan.md",
+    "plans/artifacts/auth-migration",
+    "evals/run-evals.ps1",
+    "evals/legacy",
+    "evals/cases",
+    "evals/baseline",
+    "evals/expected",
+    "tests/validate-plan.tests.ps1",
+    "tests/detect-drift.tests.ps1",
+    "tests/fixtures/plan-metadata"
+  ]
+}

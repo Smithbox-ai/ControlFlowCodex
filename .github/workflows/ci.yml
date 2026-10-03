@@ -26,9 +26,12 @@ jobs:
       - name: Run structural contract suite
         shell: pwsh
         run: ./tests/run-contract-tests.ps1 -UsePester
-      - name: Validate eval case schemas
+      - name: Validate executable E2E corpora (no models)
         shell: pwsh
-        run: ./evals/run-evals.ps1 -RepoRoot . -ValidateOnly
+        run: |
+          ./evals/run-e2e.ps1 -RepoRoot . -Suite Pilot -ValidateOnly
+          ./evals/run-e2e.ps1 -RepoRoot . -Suite Release -ValidateOnly
+          ./evals/run-risk-diagnostics.ps1 -RepoRoot . -ValidateOnly
 
   # macOS runs on main only (not on every PR), per the Compact vNext CI split.
   validate-macos:
@@ -48,6 +51,9 @@ jobs:
       - name: Run structural contract suite
         shell: pwsh
         run: ./tests/run-contract-tests.ps1 -UsePester
-      - name: Validate eval case schemas
+      - name: Validate executable E2E corpora (no models)
         shell: pwsh
-        run: ./evals/run-evals.ps1 -RepoRoot . -ValidateOnly
+        run: |
+          ./evals/run-e2e.ps1 -RepoRoot . -Suite Pilot -ValidateOnly
+          ./evals/run-e2e.ps1 -RepoRoot . -Suite Release -ValidateOnly
+          ./evals/run-risk-diagnostics.ps1 -RepoRoot . -ValidateOnly

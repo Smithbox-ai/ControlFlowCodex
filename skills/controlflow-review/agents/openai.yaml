@@ -1,7 +1,7 @@
 interface:
   display_name: "ControlFlow Review"
   short_description: "Review implementation against the approved plan"
-  default_prompt: "Use $controlflow-review to compare this implementation with its approved ControlFlow plan."
+  default_prompt: "Use $controlflow-codex:controlflow-review to compare this implementation with its approved ControlFlow plan."
 
 policy:
   allow_implicit_invocation: false

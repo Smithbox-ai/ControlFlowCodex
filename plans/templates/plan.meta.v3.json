@@ -1,0 +1,11 @@
+{
+  "schema_version": "3.0.0",
+  "task_id": "example-task",
+  "goal": "Describe the concrete desired behavior",
+  "tier": "SMALL",
+  "baseline": { "commit": "0000000000000000000000000000000000000000", "dirty_paths": [] },
+  "scope": ["src/**", "tests/**"],
+  "criteria": [{"id": "C1", "text": "The requested behavior is demonstrated by the targeted check"}],
+  "checks": [{"id": "check-1", "command": "pwsh -NoProfile -File tests/targeted.tests.ps1", "working_directory": ".", "timeout_seconds": 120, "criteria": ["C1"]}],
+  "commit": {"mode": "none"}
+}

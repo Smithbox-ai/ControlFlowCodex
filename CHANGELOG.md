@@ -1,5 +1,39 @@
 # Changelog
 
+## 3.0.0-rc.1 — native reliability candidate
+
+- File-to-file LARGE CLI probes and a separate critical-risk diagnostic protocol
+  bind source/result/criteria evidence, independent semantic annotations and
+  explicit missing-coverage reporting.
+- Explicit `$controlflow` entry with TRIVIAL/SMALL/MEDIUM/LARGE progression;
+  three manual skills remain available with v3 evidence binding.
+- Remove retired v2 validators, drift/scoring runners, schema, templates,
+  example verdicts and old fixtures. Shared packaging rejects those paths;
+  migration accepts an external old contract and creates a separate v3 copy.
+- Native `update_plan` progress for multi-step work: restore verified milestones,
+  update after substantial changes, keep waiting work incomplete, and use honest
+  textual fallback when unavailable. TODO never substitutes for evidence/gates.
+- Native text invocation uses qualified `controlflow-codex:<skill-name>` names.
+  Explicit-only skills are selected through the native SDK rather than presumed
+  present in the implicit catalogue; defaults and entry instructions agree.
+- Strict v3 contracts, separate-copy migration, immutable real check captures,
+  atomic state revisions, contract/source-bound approvals and coverage.
+- Separate initial user index/worktree/untracked evidence; effective source
+  identity survives staging and commit; incomplete Git fails closed.
+- Direct completion and prospective selective-commit gates, including actual
+  required commit SHA/tree/parent verification. Commits require explicit request.
+- Local Stop/resume/Interrupt adapters with lawful incomplete turn endings,
+  persistent 3-identical/6-total bounds, session isolation and manual fallback.
+- Portable root manifest and compatibility overlay; shared package inventory,
+  transactional installation/registration, bounded Windows path handling, and
+  smoke installation from the extracted release ZIP.
+- Dev-only real CLI E2E adapter, 12 pilot/55 release fixtures, hidden repository
+  graders, parent+child usage and strict incomplete metrics; Windows/Linux CI
+  and explicit budgeted behavioral runs.
+
+Release candidate status does not establish real A/B targets or trusted Desktop
+callback support. Those require separate observed evidence; see evals and docs.
+
 ## 2.0.0 — Compact vNext
 
 Evidence-first planning layer, no duplicated agent runtime.

@@ -1,224 +1,131 @@
-# ControlFlow for Codex
+# ControlFlow for Codex v3
 
-> **Compact vNext** — an evidence-first planning layer for native Codex.
-> Durable execution contracts, adversarial preflight, and plan-conformance
-> review — without duplicating what Codex already owns.
+An explicit, compact reliability layer for native Codex. `$controlflow` adds a
+durable execution contract and evidence for completion. Native Codex owns tools,
+sandboxing, permission decisions, execution, review, and agent lifecycle.
 
-**3 focused skills, 0 subagents, 2 deterministic scripts, 1 template pair.**
-ControlFlow persists intent and evidence; Codex runs execution. The plugin
-installs no router, runtime policy, approval engine, retry scheduler, scorer,
-revision state machine, or custom subagents.
+This is a **v3 release candidate**. Deterministic tests establish the mechanical
+guarantees; real A/B outcomes and host callbacks need separate evidence before
+claiming production readiness.
 
-## What ControlFlow adds vs. what native Codex owns
+## Use
 
-| Native Codex keeps | ControlFlow adds |
+For native plugin text invocation, use `$controlflow-codex:controlflow` with a
+repository task. Short aliases such as `$controlflow` require host support.
+Native plugins namespace skill names and explicit-only skills may be hidden
+from the implicit prompt catalogue. The entry skill chooses the tier
+from observed scope, behavior, boundaries, product uncertainty, and risk:
+
+| Tier | Artifacts and review |
 | --- | --- |
-| `/plan` — context gathering & clarification | durable execution contract on disk |
-| `/goal` — persistent objective | acceptance criteria + baseline + scope |
-| execution · sandbox · approvals · retries | (nothing — delegated) |
-| subagents · lifecycle | (nothing — delegated) |
-| `/review` — generic code review | plan-conformance + scope-drift + evidence |
-| `/memories` — ambient memory | (nothing — delegated) |
+| TRIVIAL | Native work; no run state or agents |
+| SMALL | `plan.meta.json`, captured checks, direct delivery gate |
+| MEDIUM | JSON + short rationale; preflight and final conformance review |
+| LARGE | MEDIUM with explicit risks/ordering; at most two optional native readers |
 
-The architectural principle: **ControlFlow stores intent and evidence; Codex
-manages execution.** Do not add capabilities until an eval shows a concrete gap.
+An unresolved HIGH risk forces LARGE. Only product-critical missing information
+requires clarification. A commit is required only when the user requests it.
+There is one production writer per task. Optional readers must have a concrete
+question and their usage counts toward the task total.
 
-## When to use it
+Use `plans/templates/plan.meta.v3.json` for a new contract and validate it with
+`scripts/validate-contract.ps1 -Path <contract>`. The SMALL v3 example is
+`plans/examples/small-v3.meta.json`; replace its sample baseline and checks with
+actual repository evidence before starting a run.
 
-- **Trivial** one- or two-file change → use native Codex directly. No ControlFlow.
-- **Small / Medium** → `/plan`, then `$controlflow-plan`, `$controlflow-verify`, implement, `/review`, `$controlflow-review`.
-- **Large / risky migration** → same flow; the contract carries rollback risk and validation commands.
+For multi-step work, ControlFlow uses native `update_plan` when available. It
+restores the accepted milestones and verified progress after resume, updates
+after meaningful stages or plan changes, and keeps blocked/waiting work
+incomplete. Hosts without that tool receive honest textual progress. The native
+TODO reflects work status; captured evidence and completion gates still decide
+delivery. See [the progress policy](skills/controlflow/references/progress.md).
 
-## Three-command workflow
+The three manual skills remain explicit: `$controlflow-codex:controlflow-plan`,
+`$controlflow-codex:controlflow-verify`, and `$controlflow-codex:controlflow-review`.
+Internal references use their logical names. Native `/plan` and `/review`
+remain available. See [the execution reference](skills/controlflow/references/execution.md).
 
-```text
-/plan
-Plan a non-trivial task in native plan mode.
+## Evidence and completion
 
-$controlflow-plan
-Persists plans/<task>-plan.md + plans/artifacts/<task>/plan.meta.json.
+The schema version is `3.0.0`. A contract lives at
+`plans/artifacts/<task_id>/plan.meta.json`; immutable run evidence lives below
+`runs/<run_id>/`. `state.json` publishes the coherent revision. The active
+session marker is bound to the physical worktree, Git directory, session, task,
+and run. A v2 plan or another session cannot activate a v3 gate.
 
-$controlflow-verify
-Adversarially verifies the saved contract before implementation.
+`capture-check.ps1` executes one declared command and records its working
+directory, exit status, output hashes, and source identity before and after.
+Contract edits invalidate contract approval and check definitions; source edits
+invalidate checks and final review. Staging or committing identical content
+preserves its identity. The ledger verifies provenance, freshness, and coverage;
+it cannot establish the semantic truth of a model's `PROVEN` assessment.
 
-# Codex implements the approved plan with native tools.
+The delivery scripts `completion-gate.ps1` and `commit-gate.ps1` emit JSON
+`status: PASS | FAIL | ERROR` with exits `0 | 1 | 2`. Missing or incomplete Git
+observations are ERROR/UNVERIFIABLE. For a required commit, completion also
+verifies the actual commit's parent, tree, and owned paths.
 
-/review
-$controlflow-review
-Compares the diff against the approved scope and criteria.
-```
+Initial staged, worktree, and untracked user content is captured separately.
+Later changes inside an already dirty file are detected. Initial user hunks
+cannot enter the task commit; overlapping ownership blocks the conservative
+MVP and requires an isolated worktree or a concrete ownership decision.
 
-All three skills are **explicit-only** (`allow_implicit_invocation: false`), so
-they never fire accidentally on trivial work.
+## Hooks and fallback
 
-## Compact artifact contract
+Bundled local command hooks handle Stop, SessionStart, and Interrupt. Review and
+trust the current hook definition in Codex before relying on them; installation
+alone does not trust it. A clarification, denied permission, cancellation,
+interruption, Plan Mode, or BLOCKED state is a lawful turn end, distinct from
+DONE. The third identical no-progress continuation or sixth total attempt
+blocks further automatic continuation. Interrupted runs require explicit user
+resumption.
 
-Every non-trivial plan is two artifacts:
+Unavailable or untrusted hooks require an explicit manual fallback: run the
+completion gate directly and report that automatic Stop enforcement is absent.
+A callback error or damaged ledger ends visibly as BLOCKED/UNVERIFIABLE; no
+secondary state machine guesses how to repair it. Native hooks are a reliability
+aid, not a security boundary. See [hook integration and limitations](docs/hooks.md).
 
-- `plans/<task-slug>-plan.md` — concise human rationale, decisions, notes.
-- `plans/artifacts/<task-slug>/plan.meta.json` — the canonical machine contract
-  (`schemas/plan-meta.schema.json`, `schema_version: 2.0.0`).
+## Install and package
 
-The machine contract holds the machine-critical data and is **not duplicated** in
-prose:
-
-```json
-{
-  "schema_version": "2.0.0",
-  "goal": "...",
-  "tier": "MEDIUM",
-  "baseline": { "commit": "<sha>", "dirty_paths": [] },
-  "scope": ["src/auth/**", "tests/auth/**"],
-  "criteria": ["..."],
-  "checks": ["dotnet test tests/auth"],
-  "risks": { "migration_rollback": { "impact": "HIGH", "mitigation": "dual-read" } }
-}
-```
-
-- `risks` is an object keyed by category — only applicable categories, no
-  `not_applicable` placeholders.
-- `phases` is optional; include it only when ordering materially matters.
-- `baseline` replaces full-tree snapshots: `O(1)` commit + `O(D)` dirty paths
-  instead of `O(N)` over the whole tracked tree.
-
-Copy `plans/templates/plan.md` and `plans/templates/plan.meta.json` to start a
-plan, then ground every field in verified repository evidence. See
-`plans/examples/auth-migration-plan.md` for a worked example.
-
-## Risk / tier policy
-
-- Tiers: `TRIVIAL` · `SMALL` · `MEDIUM` · `LARGE`.
-- Any unresolved applicable `HIGH` risk forces `LARGE`.
-- Multi-candidate planning is **not** a default rule; consider alternative
-  designs only when material architectural uncertainty remains.
-
-## Deterministic scripts
-
-Only two runtime scripts:
-
-- `scripts/validate-plan.ps1` — validates `plan.meta.json` against the v2
-  contract and (optionally) the compact `verify-verdict.md` shape.
-  ```powershell
-  pwsh -File scripts/validate-plan.ps1 -RepoRoot . -PlanPath plans/my-task-plan.md -RequirePlanMetadata
-  ```
-- `scripts/detect-drift.ps1` — classifies changed paths as `planned` or
-  `unplanned` against `plan.meta.json` `scope`, using the metadata `baseline`
-  and combining committed, staged, unstaged, and untracked changes.
-  ```powershell
-  pwsh -File scripts/detect-drift.ps1 -RepoRoot . -PlanPath plans/my-task-plan.md
-  ```
-
-The verifier rubric and these scripts are evidence, not replacements for native
-Codex approval, execution, sandbox, or review decisions.
-
-## Evidence and scope-drift behavior
-
-`$controlflow-review` runs four checks: actual scope vs approved scope (via
-`detect-drift.ps1`), success criteria vs evidence, unplanned externally visible
-behavior, and promised rollback/operability. `detect-drift.ps1` reports
-`planned` / `unplanned`; the review skill decides semantically whether an
-unplanned change is justified. General correctness, security, style, and docs
-belong to native `/review`.
-
-## Behavioral eval methodology
-
-Structural tests (`tests/`) prove artifact shape; they cannot prove model
-behavior. `evals/` is a behavioral regression corpus: each case declares
-`must_detect` / `must_not_do` / `max_artifact_bytes`, and `evals/run-evals.ps1`
-scores produced artifacts and records token, byte, and tool-call medians.
+Requires Git and PowerShell 7. The root `plugin.json` is canonical; the
+`.codex-plugin/plugin.json` compatibility manifest mirrors its OpenAI extension.
 
 ```powershell
-pwsh -File evals/run-evals.ps1 -RepoRoot . -ValidateOnly        # PR CI: case schema
-pwsh -File evals/run-evals.ps1 -RepoRoot . -RunsDir <runs> -Variant compact-vnext
+pwsh -NoProfile -File scripts/install.ps1 -Force
+pwsh -NoProfile -File scripts/install.ps1 -Uninstall -Force
+pwsh -NoProfile -File scripts/package.ps1
 ```
 
-See [evals/README.md](evals/README.md) for the full methodology and acceptance
-targets. The retired plan scorer lives under `evals/legacy/` for optional
-offline correlation only — it is not in the runtime loop.
+`-HomeRoot <path>` supports isolated installation. The installer validates
+ownership and containment, stages the shared inventory, and rolls back a failed
+replacement or marketplace update. Other marketplace entries are preserved.
+Release smoke extracts the ZIP and installs **that extracted source**.
 
-## Installation
-
-### From a project checkout (local / development)
-
-`scripts/install.ps1` is a clean reinstall: it first **removes any previously
-installed plugin files** at the target, then **copies the current shipped files
-from this project directory**. Removing first means files renamed or deleted
-between versions never leave orphans behind.
+## Development and evaluation
 
 ```powershell
-pwsh -File scripts/install.ps1 -Force
+pwsh -NoProfile -File tests/run-contract-tests.ps1
+pwsh -NoProfile -File evals/run-e2e.ps1 -RepoRoot . -Suite Pilot -ValidateOnly
 ```
 
-This copies the shipped surface (`.codex-plugin`, `assets`, `skills`, `schemas`,
-`scripts`, `plans/templates`, `plans/examples`, `tests`, `evals`, `README.md`,
-`CHANGELOG.md`, `LICENSE`) into `$HOME/plugins/controlflow-codex` and registers
-a local marketplace entry at `$HOME/.agents/plugins/marketplace.json`. Working
-state (`.git`, `.vs`, `dist`, …) is never copied.
+Windows/Linux CI runs deterministic suites. Authenticated E2E is explicit and
+budgeted. [Evals](evals/README.md) compare actual repository outcomes on the same
+fixtures/model/settings and count parent plus subagent tokens. Missing checks
+or metrics are incomplete, never success. The 12-case pilot is distinct from
+the 55-case release corpus; release assessment needs at least three paired
+trials and reports paired uncertainty and per-tier regressions.
+LARGE graders also exercise the file-to-file CLI. The separate
+[critical-risk diagnostic protocol](evals/RISK-DIAGNOSTICS.md) measures collection
+and independently reviewed recall; unreviewed findings have no certified recall.
 
-Remove it again with:
+## Migration and rollback
 
-```powershell
-pwsh -File scripts/install.ps1 -Uninstall -Force
-```
-
-Without `-Force`, install refuses to overwrite an existing target and uninstall
-prompts for confirmation. Use `-HomeRoot <path>` to install into a different
-home (useful for isolated testing).
-
-### Published distribution
-
-For a published release, prefer Codex's native plugin marketplace flow once a
-marketplace manifest is published:
-
-```bash
-codex plugin marketplace add Smithbox-ai/ControlFlowCodex
-```
-
-The `.codex-plugin/plugin.json` manifest is the plugin contract in both paths.
-
-## Migration from v1 artifacts
-
-v1 used `complexity_tier`, an array of seven `semantic_risks` (with
-`not_applicable` placeholders), `phases[].files/commands`, `plan_path`, a
-a structured revision-handoff loop, a runtime scorer, and full-tree
-`context-snapshot.json`. To migrate a v1 plan:
-
-1. Rename `complexity_tier` → `tier`; set `schema_version` → `2.0.0`.
-2. Collapse `phases[].files` / `phases[].commands` into top-level `scope` /
-   `checks`; keep `phases` only if ordering matters.
-3. Convert the seven `semantic_risks` rows into a sparse `risks` object, dropping
-   `not_applicable` entries.
-4. Replace `context-snapshot.json` with `baseline: { commit, dirty_paths }`.
-5. Drop `plan_path`, the revision-handoff JSON, and any score breakdown from the
-   verdict. The new verdict is `Status` + `## Findings` + residual uncertainty +
-   next action.
-
-`git tag controlflow-v1-baseline` marks the pre-refactor state for rollback.
-
-## Repository layout
-
-```
-.codex-plugin/plugin.json          plugin manifest
-skills/controlflow-plan/           $controlflow-plan  (SKILL.md + agents/openai.yaml)
-skills/controlflow-verify/         $controlflow-verify
-skills/controlflow-review/         $controlflow-review
-schemas/plan-meta.schema.json      v2 machine contract
-scripts/install.ps1                local install/uninstall (remove + copy from project)
-scripts/validate-plan.ps1          metadata + verdict validator
-scripts/detect-drift.ps1           scope drift detector (planned/unplanned)
-plans/templates/                   one compact template pair
-plans/examples/                    worked compact example
-tests/                             structural contract suite
-evals/                             behavioral regression corpus + runner
-.github/workflows/                 ci · eval · release
-```
-
-## License
+The v3 distribution contains only its current runtime, schema, template and
+examples. Retired v2 validators, drift/scoring runners, templates and example
+verdicts are removed. The v3 migration command accepts an external v2 contract
+and writes a separate copy; inspect its coverage and approve a fresh run.
+Do not reuse a v2 verdict as v3 evidence. See
+[migration and rollback](docs/migration-v3.md).
 
 MIT — see [LICENSE](LICENSE).
-
-
-
-
-
-

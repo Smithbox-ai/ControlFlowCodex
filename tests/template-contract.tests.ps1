@@ -1,54 +1,21 @@
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference='Stop'
+$repoRoot=Split-Path -Parent $PSScriptRoot
+$templateRoot=Join-Path $repoRoot 'plans/templates'
+$exampleRoot=Join-Path $repoRoot 'plans/examples'
+Import-Module (Join-Path $repoRoot 'scripts/ControlFlow.Core.psm1') -Force -DisableNameChecking
 
-$repoRoot = Split-Path -Parent $PSScriptRoot
-$templateRoot = Join-Path $repoRoot "plans/templates"
-
-$markdownPath = Join-Path $templateRoot "plan.md"
-$metadataPath = Join-Path $templateRoot "plan.meta.json"
-
-if (-not (Test-Path -LiteralPath $markdownPath -PathType Leaf)) {
-    throw "Missing Markdown template: $markdownPath"
+# Exact shipped entries prevent the old Markdown/sidecar workflow from quietly
+# returning alongside the current machine-readable v3 contract.
+$templates=@(Get-ChildItem -LiteralPath $templateRoot -File -Recurse -Force|ForEach-Object {[IO.Path]::GetRelativePath($templateRoot,$_.FullName).Replace('\','/')})
+if(@(Compare-Object @('plan.meta.v3.json') $templates).Count){throw "Expected only the v3 metadata template, found: $($templates -join ', ')"}
+$examples=@(Get-ChildItem -LiteralPath $exampleRoot -File -Recurse -Force|ForEach-Object {[IO.Path]::GetRelativePath($exampleRoot,$_.FullName).Replace('\','/')})
+if(@(Compare-Object @('small-v3.meta.json') $examples).Count){throw "Expected only the v3 SMALL example, found: $($examples -join ', ')"}
+foreach($path in @((Join-Path $templateRoot 'plan.meta.v3.json'),(Join-Path $exampleRoot 'small-v3.meta.json'))){
+    $read=Read-ControlFlowContract -Path $path
+    if($read.legacy -or $read.contract.schema_version -cne '3.0.0' -or $read.contract.tier -cne 'SMALL' -or $read.contract.commit.mode -cne 'none'){throw "V3 template/example must be a current SMALL contract with no requested commit: $path"}
+    $global:LASTEXITCODE=0
+    $output=& (Join-Path $repoRoot 'scripts/validate-contract.ps1') -Path $path
+    if($LASTEXITCODE -ne 0 -or ($output|ConvertFrom-Json).status -cne 'PASS'){throw "Shipped v3 contract failed its public validator: $path"}
 }
-if (-not (Test-Path -LiteralPath $metadataPath -PathType Leaf)) {
-    throw "Missing metadata template: $metadataPath"
-}
-
-$markdown = Get-Content -LiteralPath $markdownPath -Raw
-if ($markdown -notmatch [regex]::Escape("# Plan:")) {
-    throw "Template plan.md must start with a '# Plan:' heading"
-}
-if ($markdown -notmatch [regex]::Escape("plan.meta.json")) {
-    throw "Template plan.md must point to the sidecar contract"
-}
-if ($markdown -notmatch [regex]::Escape("## Goal & Non-Goals")) {
-    throw "Template plan.md must include a Goal & Non-Goals section"
-}
-
-try {
-    $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
-} catch {
-    throw "Template plan.meta.json is not valid JSON: $($_.Exception.Message)"
-}
-
-foreach ($field in @("schema_version", "goal", "tier", "baseline", "scope", "criteria", "checks")) {
-    if ($null -eq $metadata.PSObject.Properties[$field]) {
-        throw "Template plan.meta.json is missing '$field'"
-    }
-}
-if ($metadata.schema_version -cne "2.0.0") {
-    throw "Template plan.meta.json schema_version must be '2.0.0' (got '$($metadata.schema_version)')"
-}
-if ($metadata.tier -cnotin @("TRIVIAL", "SMALL", "MEDIUM", "LARGE")) {
-    throw "Template plan.meta.json tier must be a valid tier"
-}
-if ($null -eq $metadata.baseline.PSObject.Properties["commit"] -or $null -eq $metadata.baseline.PSObject.Properties["dirty_paths"]) {
-    throw "Template plan.meta.json baseline must have commit and dirty_paths"
-}
-
-# Compact vNext ships exactly one template pair.
-$shippedTemplates = @(Get-ChildItem -LiteralPath $templateRoot -File | ForEach-Object { $_.Name })
-if ($shippedTemplates.Count -ne 2) {
-    throw "Expected exactly one template pair (plan.md + plan.meta.json), found: $($shippedTemplates -join ', ')"
-}
-
-Write-Output "VALID template contract"
+Write-Output 'VALID v3-only template and SMALL example contracts'
+$global:LASTEXITCODE=0

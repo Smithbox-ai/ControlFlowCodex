@@ -1,53 +1,131 @@
 name: eval
 
-# Behavioral regression corpus. Model runs cost time/tokens, so this is nightly
-# or manual only. The structural contract suite runs in ci.yml on every PR.
 on:
   schedule:
     - cron: "0 3 * * *"
   workflow_dispatch:
     inputs:
-      runs_artifact:
-        description: "Name of a previously-uploaded runs artifact (optional). If absent, only case schemas are validated."
-        required: false
-        default: ""
+      execute_e2e:
+        description: "Run authenticated, budgeted native/v3 trials (consumes model quota)"
+        type: boolean
+        default: false
+      suite:
+        type: choice
+        options: [Pilot, Release]
+        default: Pilot
+      trials:
+        description: "Paired trials per fixture; release assessment requires at least 3"
+        type: number
+        default: 1
+      model:
+        type: string
+        default: gpt-6.1-sol
+      effort:
+        type: choice
+        options: [low, medium, high, xhigh, max]
+        default: max
+      cli_version:
+        type: string
+        default: "0.160.0"
+      max_tokens_per_run:
+        type: number
+        default: 200000
+      max_total_tokens_per_arm:
+        type: number
+        default: 2400000
+      max_runs_per_arm:
+        type: number
+        default: 12
+      max_wall_seconds_per_arm:
+        type: number
+        default: 7800
 
 jobs:
-  eval:
-    name: Behavioral eval corpus
+  deterministic:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Show PowerShell version
+      - name: Portable contracts and hidden grader fixtures
         shell: pwsh
-        run: $PSVersionTable
-      - name: Install Pester
-        shell: pwsh
-        run: |
-          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-          Install-Module -Name Pester -MinimumVersion 5.0 -Scope CurrentUser -Force -AllowClobber
-      - name: Structural contracts
-        shell: pwsh
-        run: ./tests/run-contract-tests.ps1 -UsePester
-      - name: Validate eval case schemas
-        shell: pwsh
-        run: ./evals/run-evals.ps1 -RepoRoot . -ValidateOnly
-      - name: Score runs artifact (if provided)
-        if: ${{ github.event.inputs.runs_artifact != '' }}
+        run: ./tests/run-contract-tests.ps1
+      - name: Validate all corpora without model calls
         shell: pwsh
         run: |
-          Write-Output "::notice::Download the runs artifact named '$env:RUNS_ARTIFACT' into ./eval-runs before this step to score them."
-          if (Test-Path ./eval-runs) {
-            ./evals/run-evals.ps1 -RepoRoot . -RunsDir ./eval-runs -Variant nightly
-          } else {
-            Write-Output "No ./eval-runs directory present; skipping scoring (schemas already validated)."
-          }
+          ./evals/run-e2e.ps1 -RepoRoot . -Suite Pilot -ValidateOnly
+          ./evals/run-e2e.ps1 -RepoRoot . -Suite Release -ValidateOnly
+          ./evals/run-risk-diagnostics.ps1 -RepoRoot . -ValidateOnly
+
+  paired-e2e:
+    if: github.event_name == 'workflow_dispatch' && inputs.execute_e2e
+    needs: deterministic
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install exact CLI and authenticate
+        shell: pwsh
         env:
-          RUNS_ARTIFACT: ${{ github.event.inputs.runs_artifact }}
-      - name: Upload eval results
+          CLI_VERSION: ${{ inputs.cli_version }}
+          OPENAI_API_KEY: ${{ secrets.CODEX_E2E_API_KEY }}
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:CLI_VERSION -cnotmatch '^\d+\.\d+\.\d+$'){throw 'Invalid pinned CLI version'}
+          if(-not $env:OPENAI_API_KEY){throw 'CODEX_E2E_API_KEY is required for requested authenticated E2E'}
+          npm install --global "@openai/codex@$env:CLI_VERSION"
+          if($LASTEXITCODE -ne 0){throw 'CLI install failed'}
+          $env:OPENAI_API_KEY | codex login --with-api-key
+          if($LASTEXITCODE -ne 0){throw 'CLI authentication failed'}
+          New-Item -ItemType Directory -Path (Join-Path $env:HOME '.codex/sessions') -Force | Out-Null
+      - name: Execute paired fixtures under identical native settings
+        shell: pwsh
+        env:
+          EVAL_SUITE: ${{ inputs.suite }}
+          EVAL_TRIALS: ${{ inputs.trials }}
+          EVAL_MODEL: ${{ inputs.model }}
+          EVAL_EFFORT: ${{ inputs.effort }}
+          CLI_VERSION: ${{ inputs.cli_version }}
+          MAX_RUN_TOKENS: ${{ inputs.max_tokens_per_run }}
+          MAX_TOTAL_TOKENS: ${{ inputs.max_total_tokens_per_arm }}
+          MAX_RUNS: ${{ inputs.max_runs_per_arm }}
+          MAX_WALL: ${{ inputs.max_wall_seconds_per_arm }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $output=Join-Path $env:RUNNER_TEMP 'controlflow-paired-e2e'
+          $marketplace="controlflow-eval-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-"+[guid]::NewGuid().ToString('N').Substring(0,12)
+          $nativeOut=Join-Path $output 'native';$v3Out=Join-Path $output 'v3'
+          $common=@{RepoRoot=(Get-Location).Path;Suite=$env:EVAL_SUITE;Model=$env:EVAL_MODEL;Effort=$env:EVAL_EFFORT;HostLabel="github-linux-cli-$env:CLI_VERSION";CliPath=@(Get-Command codex -CommandType Application)[0].Source;ExpectedCliVersion=$env:CLI_VERSION;SessionRoot=(Join-Path $env:HOME '.codex/sessions');MarketplaceName=$marketplace;MaxWallSeconds=600;MaxTotalWallSeconds=[int]$env:MAX_WALL;MaxTokens=[long]$env:MAX_RUN_TOKENS;MaxTotalTokens=[long]$env:MAX_TOTAL_TOKENS;MaxToolCalls=150;MaxRuns=[int]$env:MAX_RUNS;Trials=[int]$env:EVAL_TRIALS;ApprovalPolicy='never';ApprovalReviewer='user';Sandbox='workspace-write';Execute=$true}
+          ./evals/run-e2e.ps1 @common -Variant native -OutDir $nativeOut
+          # The native arm froze the only runtime bytes allowed into v3/cache.
+          $snapshot=Join-Path $nativeOut 'marketplace/plugins/controlflow-codex'
+          $cache=Join-Path $env:HOME '.codex/plugins/cache'
+          New-Item -ItemType Directory -Path $cache -Force|Out-Null
+          $cacheArgs=@{NativeCacheRoot=$cache;MarketplaceName=$marketplace;ConfigPath=(Join-Path $env:HOME '.codex/config.toml');ReceiptPath=(Join-Path $output 'native-cache-receipt.json')}
+          $prepared=$false;$trialError=$null
+          try {
+            ./evals/prepare-e2e-cache.ps1 @cacheArgs -SourceRoot $snapshot -ExpectedInventoryPath (Join-Path $nativeOut 'plugin-inventory.json')
+            $prepared=$true
+            ./evals/run-e2e.ps1 @common -Variant v3 -PluginRoot $snapshot -OutDir $v3Out
+            ./evals/compare-e2e.ps1 -NativeDirectory $nativeOut -V3Directory $v3Out -OutputPath (Join-Path $output 'comparison.json')
+            $native=Get-Content (Join-Path $nativeOut 'summary.json') -Raw|ConvertFrom-Json
+            $v3=Get-Content (Join-Path $v3Out 'summary.json') -Raw|ConvertFrom-Json
+            foreach($arm in @($native,$v3)) {
+              if($null -eq $arm.summary.run_count -or $null -eq $arm.summary.requested_count -or $arm.summary.run_count -ne $arm.summary.requested_count -or $arm.summary.incomplete_count -or $arm.summary.unrun_count -or $arm.summary.rejected_attempt_count){throw 'Incomplete trial or metrics collection; inspect preserved evidence'}
+            }
+          } catch {
+            $trialError=$_;throw
+          } finally {
+            if($prepared) {
+              try { ./evals/prepare-e2e-cache.ps1 @cacheArgs -Cleanup -ProcessesStopped -ProcessEvidenceRoot $v3Out }
+              catch { Write-Warning "Owned cache cleanup deferred; evidence/config/foreign paths preserved: $($_.Exception.Message)";if($null -eq $trialError){throw} }
+            }
+          }
+      - name: Preserve actual trial evidence and comparison
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: eval-results
-          path: evals/results/
-          if-no-files-found: ignore
+          name: paired-e2e-${{ github.run_id }}
+          path: ${{ runner.temp }}/controlflow-paired-e2e
+          if-no-files-found: warn

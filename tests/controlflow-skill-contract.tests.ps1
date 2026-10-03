@@ -20,7 +20,7 @@ function Assert-Contains([string]$Content, [string]$Needle, [string]$Label) {
 
 function Assert-NotContains([string]$Content, [string]$Needle, [string]$Label) {
     if ($Content -match [regex]::Escape($Needle)) {
-        throw "Forbidden '$Label' still present: '$Needle' (removed in Compact vNext)"
+        throw "Forbidden retired runtime '$Label' still present: '$Needle'"
     }
 }
 
@@ -35,7 +35,7 @@ $readme = Read-Skill "README.md"
 # --- plan skill: compact durable contract ---
 Assert-Contains $plan 'after native `/plan`' 'plan positions after native /plan'
 Assert-Contains $plan "plans/artifacts/<task-slug>/plan.meta.json" "plan metadata artifact"
-Assert-Contains $plan "schema_version: 2.0.0" "plan v2 schema version"
+Assert-Contains $plan "schema_version: 3.0.0" "plan v3 schema version"
 Assert-Contains $plan "baseline" "plan baseline field"
 Assert-Contains $plan "dirty_paths" "plan dirty_paths field"
 Assert-Contains $plan "scope" "plan scope field"
@@ -45,7 +45,7 @@ Assert-Contains $plan "risks" "plan risks field"
 Assert-Contains $plan "phases" "plan phases field"
 Assert-Contains $plan "TRIVIAL" "plan trivial tier"
 Assert-Contains $plan "LARGE" "plan large tier"
-Assert-Contains $plan "scripts/validate-plan.ps1" "plan validator command"
+Assert-Contains $plan "scripts/validate-contract.ps1" "plan validator command"
 Assert-Contains $plan '$controlflow-verify' 'plan hands off to verify'
 Assert-Contains $plan "not_applicable" "plan sparse risks rule"
 Assert-Contains $plan "Do not duplicate native execution" "plan native boundary"
@@ -62,7 +62,7 @@ Assert-NotContains $plan "Semantic Risk Review" "plan forced seven-row risk tabl
 # --- verify skill: five questions + compact verdict ---
 Assert-Contains $verify "Five questions" "verify five questions section"
 Assert-Contains $verify "APPROVED | NEEDS_REVISION | REPLAN" "verify verdict statuses"
-Assert-Contains $verify "verify-verdict.md" "verify verdict artifact"
+Assert-Contains $verify "review rationale inside the active run directory" "bound review rationale"
 Assert-Contains $verify "plan.meta.json" "verify metadata input"
 Assert-Contains $verify "Try to break the plan" "verify adversarial stance"
 Assert-Contains $verify "Residual uncertainty" "verify residual uncertainty section"
@@ -76,7 +76,7 @@ Assert-NotContains $verify "P1 Phantom API" "verify mirage codes"
 
 # --- review skill: four conformance checks ---
 Assert-Contains $review "Four checks" "review four checks section"
-Assert-Contains $review "detect-drift.ps1" "review drift detector command"
+Assert-Contains $review "completion-gate.ps1" "current scope and evidence gate"
 Assert-Contains $review "planned" "review planned classification"
 Assert-Contains $review "unplanned" "review unplanned classification"
 Assert-Contains $review "plan.meta.json" "review metadata input"
@@ -97,8 +97,8 @@ Assert-Contains $reviewYaml "allow_implicit_invocation: false" "review implicit 
 Assert-Contains $readme "Compact" "README compact framing"
 Assert-Contains $readme "durable execution contract" "README durable contract"
 Assert-Contains $readme "plan.meta.json" "README metadata reference"
-Assert-Contains $readme "detect-drift.ps1" "README drift command"
-Assert-Contains $readme "validate-plan.ps1" "README validator command"
+Assert-Contains $readme "completion-gate.ps1" "README completion gate"
+Assert-Contains $readme "validate-contract.ps1" "README v3 validator command"
 Assert-Contains $readme "evals" "README eval methodology"
 Assert-NotContains $readme "score-plan.ps1" "README runtime scorer reference"
 Assert-NotContains $readme "revision-request" "README revision loop reference"

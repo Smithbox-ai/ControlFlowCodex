@@ -1,0 +1,52 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "controlflow-codex",
+  "version": "3.0.0-rc.1",
+  "description": "Explicit native Codex reliability layer: adaptive task contracts, captured evidence, completion gates, and bounded lifecycle hooks.",
+  "author": {
+    "name": "Smithbox-ai",
+    "url": "https://github.com/Smithbox-ai/ControlFlowCodex"
+  },
+  "homepage": "https://github.com/Smithbox-ai/ControlFlowCodex",
+  "repository": "https://github.com/Smithbox-ai/ControlFlowCodex",
+  "license": "MIT",
+  "keywords": [
+    "controlflow",
+    "codex",
+    "planning",
+    "durable-contract",
+    "adversarial-verification",
+    "plan-conformance",
+    "evidence-backed",
+    "standalone"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "ControlFlow for Codex",
+        "shortDescription": "Explicit repository work with current evidence",
+        "longDescription": "ControlFlow v3 adds an explicit entry, adaptive contracts, actual check evidence, selective commit and completion gates, and bounded local lifecycle hooks. Native Codex retains tools, sandbox, permissions, review, and agent lifecycle. Candidate release; host callbacks and behavioral outcomes require separate validation.",
+        "developerName": "Smithbox-ai",
+        "category": "Coding",
+        "capabilities": [
+          "Interactive",
+          "Read",
+          "Write"
+        ],
+        "websiteURL": "https://github.com/Smithbox-ai/ControlFlowCodex",
+        "privacyPolicyURL": "https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement",
+        "termsOfServiceURL": "https://docs.github.com/en/site-policy/github-terms/github-terms-of-service",
+        "defaultPrompt": [
+          "Use $controlflow-codex:controlflow to complete this repository task with appropriate evidence.",
+          "Use $controlflow-codex:controlflow-plan to persist a saved contract after native planning.",
+          "Use $controlflow-codex:controlflow-verify or $controlflow-codex:controlflow-review for explicit review."
+        ],
+        "brandColor": "#0F766E",
+        "composerIcon": "./assets/controlflow-codex-logo.svg",
+        "logo": "./assets/controlflow-codex-logo.svg",
+        "screenshots": []
+      },
+      "hooks": "./hooks/hooks.json"
+    }
+  }
+}

@@ -1,81 +1,37 @@
-# ControlFlow behavioral evals
+# ControlFlow v3 evaluation
 
-These are **behavioral** regression tests for the ControlFlow skills, not
-structural validators. They check whether the skills still do the right thing
-after the Compact vNext refactor: does the verifier catch a phantom API, does
-review catch scope drift, does a dirty worktree get recorded, and are plan
-artifacts staying compact?
+The development harness executes neutral Git repository tasks with the native
+Codex CLI, grades actual file/test/index/commit outcomes, and collects root and
+linked-child usage. It compares paired native and v3 trials only when required
+fixture, model, budget, sandbox, approval and untrusted-project provenance is
+complete. Missing evidence remains incomplete.
 
-## Why this exists
+The executable catalog contains 55 release cases and a 12-case pilot. Separate
+critical-risk diagnostics require independent offline annotations before
+semantic recall can be measured. The synthetic repositories and reference
+repairs validate the graders; they do not establish production quality.
 
-Structural contract tests (`tests/`) prove the artifact *shape* is valid.
-They cannot prove the *model behavior* is correct. This harness is the one new
-capability added in vNext, because the refactor removes a lot of prompt text and
-the only honest way to know that did not hurt quality is to measure it on a
-fixed corpus.
-
-## Layout
-
-```
-evals/
-  cases/        one JSON per scenario (task + expected behavior)
-  expected/     optional golden artifacts (reserved)
-  baseline/     static-metrics.json captured before the refactor
-  legacy/       the retired score-plan.ps1, kept for optional offline correlation
-  run-evals.ps1 the scoring runner (dev/CI only, no runtime dependency)
-```
-
-## Case shape
-
-```json
-{
-  "id": "phantom-api",
-  "task": "<the prompt handed to the planner/verifier>",
-  "tier": "SMALL",
-  "must_detect": ["strings that MUST appear in the produced verdict/plan/meta"],
-  "must_not_do": ["strings that MUST NOT appear (e.g. an approval it should not give)"],
-  "max_artifact_bytes": 12000
-}
-```
-
-## Running an eval pass
-
-The runner scores **already-produced** artifacts; it does not call a model
-itself. Produce the artifacts first by running the skills (locally or in nightly
-CI) and dropping each case's output under a runs directory:
-
-```
-<runs-dir>/
-  phantom-api/
-    plan.md
-    plan.meta.json
-    verify-verdict.md
-    metrics.json   # { input_tokens, output_tokens, tool_calls, wall_ms, success }
-```
-
-Then score:
+Unpaid checks:
 
 ```powershell
-pwsh -File evals/run-evals.ps1 -RepoRoot . -RunsDir <runs-dir> -Variant compact-vnext
+pwsh -NoProfile -File evals/run-e2e.ps1 -RepoRoot . -Suite Pilot -ValidateOnly
+pwsh -NoProfile -File evals/run-e2e.ps1 -RepoRoot . -Suite Release -ValidateOnly
+pwsh -NoProfile -File evals/run-risk-diagnostics.ps1 -RepoRoot . -ValidateOnly
+pwsh -NoProfile -File tests/e2e-evals.tests.ps1
 ```
 
-`-ValidateOnly` just checks every case JSON is well-formed (used in PR CI).
+Model execution requires explicit authorization, `-Execute`, a new evidence
+directory, pinned native settings and positive budgets. Account usage limits
+and native permission controls remain binding. Actual startup evidence must
+prove plugin isolation and the v3 SDK entry injection; availability alone is
+insufficient. The current host pilot remains on hold for unresolved ambient
+plugin isolation and the rejected follow-up SDK startup probe.
 
-## Metrics recorded
+See [E2E.md](E2E.md) for execution, usage and comparison requirements,
+[E2E-CACHE.md](E2E-CACHE.md) for owned native cache preparation, and
+[RISK-DIAGNOSTICS.md](RISK-DIAGNOSTICS.md) for independent risk review.
 
-For each case: `success`, `must_detect_found`, `must_not_do_violated`,
-`artifact_bytes`, and any `metrics.json` fields. Aggregated across the corpus:
-success rate, critical-findings recall, false-positive rate, and medians for
-tokens, artifact bytes, and tool calls. Results are written to
-`evals/results/<variant>.json` and `<variant>.csv`.
-
-## Acceptance targets (Compact vNext)
-
-| Metric | Target |
-| --- | --- |
-| Median total tokens | >= -25% vs v1 baseline |
-| Median plan artifact bytes | >= -40% |
-| Task-success regression | <= 2-3 pp |
-| Critical-risk recall regression | 0 on the high-risk corpus |
-
-These are engineering goals measured by this harness, not promises.
+The old static artifact scorer, seven JSON scoring cases and static baseline
+were removed. Prior captured observations stay preserved; they are not
+silently converted into complete v3 evidence. Evaluation scripts are not
+plugin runtime dependencies.
