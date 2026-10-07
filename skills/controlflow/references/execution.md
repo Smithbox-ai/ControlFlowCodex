@@ -30,7 +30,8 @@ Progress does not replace the contract, captured evidence, or delivery gates.
    returned `run_path`. A legacy v2 plan needs explicit migration and a new run.
 4. For MEDIUM/LARGE, use `$controlflow-verify` and record approved preflight
    through `update-run.ps1` before production edits. Repair/replan when rejected.
-   One writer implements; readers only answer bounded questions. Count all usage.
+   One writer implements using [proportional implementation](#proportional-implementation);
+   readers only answer bounded questions. Count all usage.
 5. Execute each declared check through
    `capture-check.ps1 -RepoRoot <repo> -RunPath <run> -CheckId <id>`. Read its
    actual exit/output. Review whether the check really proves the criterion;
@@ -43,6 +44,33 @@ Progress does not replace the contract, captured evidence, or delivery gates.
    paths; exclude initial user staging. Rerun completion with `-CommitSha <sha>`.
    No broad staging, amend, or foreign-hunk adoption. A Git hook that changes
    source makes checks/review stale; repair and recapture.
+
+## Proportional implementation
+
+Prefer the smallest coherent implementation satisfying accepted requirements
+and fitting existing repository architecture. Smallest means cohesive, not
+fewest lines; a focused module can be better than growing an unrelated god-file.
+
+- Follow repository conventions. Refactor adjacent code for correctness, safety,
+  or a materially simpler accepted solution; avoid unrelated refactoring.
+  Consider removing obsolete code or indirection before adding another layer.
+- Keep clear one-use logic local. New abstractions, files, or dependencies need
+  current requirements, repository conventions, demonstrated duplication, a
+  meaningful boundary, or material testability or side-effect isolation.
+  If none applies, prefer simpler concrete code.
+- Do not add layers, interfaces, wrappers, factories, helper classes, providers,
+  strategies, or configuration surfaces solely for hypothetical future reuse.
+  A new file should represent a coherent responsibility or established repository
+  organization, not merely an extractable small class/function.
+- Compatibility aliases, deprecated paths, migration shims, dual implementations,
+  and fallback APIs need an explicit requirement or repository/product evidence.
+- Comments and documentation explain non-obvious decisions, invariants,
+  constraints, and reasons; avoid restating straightforward code.
+- Match validation effort to risk: retain meaningful verification and use existing
+  test mechanisms before adding testing infrastructure.
+
+This guides the writer and existing MEDIUM/LARGE preflight and review. TRIVIAL
+gains no artifact or review; SMALL gains no mandatory review pass.
 
 Gate JSON uses `status: PASS | FAIL | ERROR`, exits `0 | 1 | 2`. FAIL means
 recorded gaps; ERROR means UNVERIFIABLE. Do not equate either with DONE.

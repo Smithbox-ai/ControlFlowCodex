@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Favor the smallest coherent implementation with evidence for new structure.
+  Existing MEDIUM/LARGE preflight and conformance review check material complexity
+  beyond accepted scope; TRIVIAL/SMALL retain their existing workflow stages.
+
 ## 3.0.0-rc.1 — native reliability candidate
 
 - File-to-file LARGE CLI probes and a separate critical-risk diagnostic protocol

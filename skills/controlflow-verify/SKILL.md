@@ -17,7 +17,7 @@ native TODO status is not approval or evidence.
 
 Read the canonical `plan.meta.json`; SMALL may have no Markdown rationale.
 For schema 3.0.0 use `scripts/validate-contract.ps1 -Path <contract>`, then the
-five questions below. MEDIUM/LARGE require APPROVED preflight before edits.
+six questions below. MEDIUM/LARGE require APPROVED preflight before edits.
 Write the review rationale inside the active run directory and record
 `{"type":"preflight","status":"APPROVED"}` through `scripts/update-run.ps1`
 with explicit RepoRoot, RunPath, and EventPath. Runtime binds the approval to
@@ -44,13 +44,21 @@ ask what would make it false, then check that condition. Every blocker cites a
 file, line, command output, or precise reasoning path. Planner confidence never
 substitutes for verifier confidence.
 
-## Five questions
+## Six questions
 
 1. Can execution start from repository evidence?
 2. Are APIs/files/dependencies/schema assumptions verified against the repo?
 3. Are failure, migration, and rollback paths sufficient?
 4. Can success be proven by runnable checks?
 5. Is planned scope coherent with the requested outcome?
+6. Is the proposed implementation the smallest coherent change consistent with
+   repository conventions, or does it introduce material speculative architecture
+   beyond the accepted task?
+
+Proportionality findings identify the concrete unnecessary structure and why
+current requirements or repository evidence do not justify it. Legitimate
+abstractions and boundaries remain allowed; file counts or line counts alone
+are not evidence.
 
 Apply auth, concurrency, data-integrity, and operability scrutiny only when the
 task touches them — not as a fixed checklist for every plan.

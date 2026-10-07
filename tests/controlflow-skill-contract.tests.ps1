@@ -27,6 +27,8 @@ function Assert-NotContains([string]$Content, [string]$Needle, [string]$Label) {
 $plan = Read-Skill "skills/controlflow-plan/SKILL.md"
 $verify = Read-Skill "skills/controlflow-verify/SKILL.md"
 $review = Read-Skill "skills/controlflow-review/SKILL.md"
+$entry = Read-Skill "skills/controlflow/SKILL.md"
+$execution = Read-Skill "skills/controlflow/references/execution.md"
 $planYaml = Read-Skill "skills/controlflow-plan/agents/openai.yaml"
 $verifyYaml = Read-Skill "skills/controlflow-verify/agents/openai.yaml"
 $reviewYaml = Read-Skill "skills/controlflow-review/agents/openai.yaml"
@@ -59,8 +61,19 @@ Assert-NotContains $plan "Multi-Candidate Planning" "plan multi-candidate sectio
 Assert-NotContains $plan "bugfix-plan-template" "plan bugfix template"
 Assert-NotContains $plan "Semantic Risk Review" "plan forced seven-row risk table"
 
-# --- verify skill: five questions + compact verdict ---
-Assert-Contains $verify "Five questions" "verify five questions section"
+# --- execution policy: current justification, not numerical architecture gates ---
+foreach ($principle in @('smallest coherent', 'not fewest lines', 'repository conventions',
+    'demonstrated duplication', 'meaningful boundary', 'testability', 'side-effect isolation',
+    'one-use', 'new file', 'hypothetical future reuse', 'unrelated refactoring', 'obsolete',
+    'compatibility', 'comments', 'validation effort to risk')) {
+    Assert-Contains $execution $principle "proportional implementation: $principle"
+}
+
+# --- verify skill: six questions + compact verdict ---
+Assert-Contains $verify "Six questions" "verify six questions section"
+Assert-Contains $verify "material speculative architecture" "preflight proportionality question"
+Assert-Contains $verify "concrete unnecessary" "preflight requires a concrete proportionality finding"
+Assert-Contains $verify "counts alone" "preflight permits justified architecture"
 Assert-Contains $verify "APPROVED | NEEDS_REVISION | REPLAN" "verify verdict statuses"
 Assert-Contains $verify "review rationale inside the active run directory" "bound review rationale"
 Assert-Contains $verify "plan.meta.json" "verify metadata input"
@@ -74,8 +87,13 @@ Assert-NotContains $verify "Score Breakdown" "verify score breakdown"
 Assert-NotContains $verify "Mirage Catalog" "verify mirage catalog"
 Assert-NotContains $verify "P1 Phantom API" "verify mirage codes"
 
-# --- review skill: four conformance checks ---
-Assert-Contains $review "Four checks" "review four checks section"
+# --- review skill: five conformance checks ---
+Assert-Contains $review "Five checks" "review five checks section"
+foreach ($signal in @('Implementation proportionality', 'material', 'fragmentation',
+    'speculative extensibility', 'compatibility', 'unrelated refactoring',
+    'maintenance burden', 'behavioral surface', 'raw line counts', 'file/class size thresholds')) {
+    Assert-Contains $review $signal "conformance proportionality: $signal"
+}
 Assert-Contains $review "completion-gate.ps1" "current scope and evidence gate"
 Assert-Contains $review "planned" "review planned classification"
 Assert-Contains $review "unplanned" "review unplanned classification"
@@ -87,6 +105,16 @@ Assert-NotContains $review "context-snapshot" "review snapshot reference"
 Assert-NotContains $review "blocking_scope_drift" "review old drift classification"
 Assert-NotContains $review "Documentation and Comment Pass" "review generic docs pass"
 Assert-NotContains $review "Over-Engineering Pass" "review generic over-engineering pass"
+
+# --- existing tiers and native ownership remain intact ---
+$trivial = [regex]::Match($entry, '(?ms)^- \*\*TRIVIAL:\*\* .*?(?=^- \*\*|\z)').Value
+$small = [regex]::Match($entry, '(?ms)^- \*\*SMALL:\*\* .*?(?=^- \*\*|\z)').Value
+Assert-Contains $trivial 'no artifacts or agents' 'TRIVIAL keeps native-only work'
+Assert-Contains $small 'direct completion gate' 'SMALL retains direct delivery'
+if ($small -match '\breview\b') { throw 'SMALL must not gain a mandatory review stage' }
+Assert-Contains $execution 'SMALL gains no mandatory review pass' 'writer-only policy for SMALL'
+Assert-Contains $verify 'zero shipped subagents' 'no new verifier agent requirement'
+Assert-Contains $review 'Native `/review` is the general code-review pass' 'native generic review ownership'
 
 # --- yaml policies: all three explicit-only ---
 Assert-Contains $planYaml "allow_implicit_invocation: false" "plan implicit invocation disabled"

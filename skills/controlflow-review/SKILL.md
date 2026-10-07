@@ -44,7 +44,7 @@ interruption, Plan Mode, or BLOCKED ends the turn without DONE.
 - Read the aggregate diff. If native `/review` results are available, consume
   them.
 
-## Four checks
+## Five checks
 
 1. **Actual scope vs approved scope** — inspect the current completion gate's
    scope and ownership observations. Initial dirty files are not exemptions;
@@ -55,6 +55,18 @@ interruption, Plan Mode, or BLOCKED ends the turn without DONE.
    persisted schema not in the approved scope?
 4. **Promised rollback / operability** — if the plan promised rollback, dual-read,
    or an operability guarantee, is it actually in place?
+5. **Implementation proportionality** — did the change add material layers,
+   indirection, dependencies, file/class fragmentation, speculative extensibility,
+   compatibility machinery, or unrelated refactoring beyond accepted requirements
+   or repository conventions? Apply the
+   [implementation policy](../controlflow/references/execution.md#proportional-implementation).
+
+Report proportionality with concrete evidence connecting unjustified complexity
+to accepted scope, repository conventions, maintenance burden, or unnecessary
+behavioral surface. Current requirements, demonstrated duplication, meaningful
+boundaries, testability, side-effect isolation, and established conventions can
+justify structure. Do not report minor naming/style preferences, subjective
+clean-code opinions, raw line counts, or arbitrary file/class size thresholds.
 
 That is the entire ControlFlow review. General correctness, security, style,
 documentation, and change-size signals belong to native `/review`.
