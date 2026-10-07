@@ -196,6 +196,10 @@ try {
     $entryUsage=Get-E2EUsage @entryArgs
     Assert (-not $entryUsage.actual_context.entry_injection_pending -and -not $entryUsage.actual_context.verified) 'sampling without selected entry is a definite mismatch and final incomplete'
     if($FocusedProvenance){Write-Output "VALID focused E2E provenance tests: $passed assertions";return}
+    $global:LASTEXITCODE=0
+    $exitCapture=Invoke-E2EProcess -Executable (Get-Command pwsh).Source -Arguments @('-NoProfile','-Command','exit 7') -WorkingDirectory $scratch -TimeoutSeconds 5
+    Assert ($exitCapture.exit_code -eq 7 -and $exitCapture.cleanup_verified) 'process adapter preserves actual nonzero child exit and verifies owned cleanup'
+    Assert ($global:LASTEXITCODE -eq 0) 'owned cleanup probes preserve the caller native exit status'
     $strictReader=Join-Path $scratch 'strict-utf8-stdin.ps1'
     Write-Utf8 $strictReader @'
 $raw=[IO.MemoryStream]::new();[Console]::OpenStandardInput().CopyTo($raw);$bytes=$raw.ToArray()

@@ -43,6 +43,8 @@ function Invoke-E2EProcess {
     foreach($key in $Environment.Keys){if($key -in @('HOME','USERPROFILE','CODEX_HOME')){throw 'Identity/auth home overrides prohibited'};$start.Environment[$key]=[string]$Environment[$key]}
     $process=[Diagnostics.Process]::new();$process.StartInfo=$start
     $clock=[Diagnostics.Stopwatch]::StartNew();$stdout=[Text.StringBuilder]::new();$timedOut=$false;$budgetReason='';$writer=$null
+    # Unix cleanup probes use nonzero to mean the owned process group is gone.
+    $callerExitCode=$global:LASTEXITCODE
     try {
         if($RawPath){[IO.Directory]::CreateDirectory((Split-Path $RawPath -Parent)) | Out-Null;$writer=[IO.StreamWriter]::new($RawPath,$false,[Text.UTF8Encoding]::new($false));$writer.AutoFlush=$true}
         if(-not $process.Start()){throw 'Could not start child process'}
@@ -72,7 +74,7 @@ function Invoke-E2EProcess {
         }
         $streams=$eof -and $stderrTask.IsCompleted
         return @{exit_code=if($process.HasExited){$process.ExitCode}else{-1};stdout=$stdout.ToString();stderr=if($stderrTask.IsCompleted){$stderrTask.GetAwaiter().GetResult()}else{''};wall_ms=$clock.ElapsedMilliseconds;timed_out=$timedOut;budget_reason=$budgetReason;streams_complete=$streams;cleanup_verified=$cleanup -and $process.HasExited -and $ownedEmpty}
-    } finally {if($writer){$writer.Dispose()};if($job){$job.Dispose()};$process.Dispose()}
+    } finally {$global:LASTEXITCODE=$callerExitCode;if($writer){$writer.Dispose()};if($job){$job.Dispose()};$process.Dispose()}
 }
 
 function Read-E2EEvents([string]$Text) {

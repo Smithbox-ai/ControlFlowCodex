@@ -8,6 +8,8 @@
 - Resolve the contract runner path during Pester test execution so Pester 5's
   separate discovery phase does not leave the path unset.
 - Use native temporary paths in E2E marketplace discovery fixtures on every OS.
+- Preserve the caller's native exit status across E2E process cleanup probes,
+  while retaining the actual child exit code in its process receipt.
 
 - Favor the smallest coherent implementation with evidence for new structure.
   Existing MEDIUM/LARGE preflight and conformance review check material complexity
