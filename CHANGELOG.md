@@ -7,6 +7,7 @@
   rejection of linked/reparse paths.
 - Resolve the contract runner path during Pester test execution so Pester 5's
   separate discovery phase does not leave the path unset.
+- Use native temporary paths in E2E marketplace discovery fixtures on every OS.
 
 - Favor the smallest coherent implementation with evidence for new structure.
   Existing MEDIUM/LARGE preflight and conformance review check material complexity

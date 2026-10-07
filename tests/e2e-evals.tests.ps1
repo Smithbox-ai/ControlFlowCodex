@@ -144,23 +144,26 @@ try {
     }
     $missingFixtureRejected=$false;try{Get-E2EExecArguments -Config $trustConfig -Schema 'schema.json'|Out-Null}catch{$missingFixtureRejected=$true}
     Assert $missingFixtureRejected 'missing fixture trust scope rejects before startup'
-    $namedMarket=@{Model='test-model';Effort='max';Variant='v3';ApprovalPolicy='on-request';ApprovalReviewer='auto_review';Sandbox='workspace-write';WindowsSandbox='elevated';Settings=@();MarketplaceRoot='C:/isolated/candidate';MarketplaceName='controlflow-eval-unique-test';CliPrefix=@()}
+    $marketplaceRoot=Join-Path $scratch 'isolated/candidate'
+    $candidatePluginPath=Join-Path $marketplaceRoot 'plugins/controlflow-codex'
+    $namedMarket=@{Model='test-model';Effort='max';Variant='v3';ApprovalPolicy='on-request';ApprovalReviewer='auto_review';Sandbox='workspace-write';WindowsSandbox='elevated';Settings=@();MarketplaceRoot=$marketplaceRoot;MarketplaceName='controlflow-eval-unique-test';CliPrefix=@()}
     $namedArgs=@(Get-E2EConfigArguments $namedMarket)
     foreach($ambient in @('pages','plugin-management','sites','superpowers','work-pets')){
         Assert ($namedArgs -contains ('plugins.'+$ambient+'@openai-curated-remote.enabled=false')) 'session overrides explicitly disable observed ambient native plugin identities'
     }
     Assert ($namedArgs -contains 'plugins.controlflow-codex@controlflow-eval-unique-test.enabled=true' -and $namedArgs -notcontains 'plugins."controlflow-codex@controlflow-eval-unique-test".enabled=true') 'native CLI override path uses bare plugin identity, rather than a literal quoted key'
-    Assert ($namedArgs -contains 'marketplaces.controlflow-eval-unique-test.source_type="local"' -and $namedArgs -contains 'marketplaces.controlflow-eval-unique-test.source="C:/isolated/candidate"') 'explicit named marketplace source and local type stay independent arguments'
+    $marketplaceSourceArgument='marketplaces.controlflow-eval-unique-test.source='+($marketplaceRoot.Replace('\','/') | ConvertTo-Json -Compress)
+    Assert ($namedArgs -contains 'marketplaces.controlflow-eval-unique-test.source_type="local"' -and $namedArgs -contains $marketplaceSourceArgument) 'explicit named marketplace source and local type stay independent arguments'
     $namedDiscovery=@(Get-E2EDiscoveryArguments $namedMarket);$filterIndex=[array]::IndexOf($namedDiscovery,'--marketplace')
     Assert ($filterIndex -ge 0 -and $namedDiscovery[$filterIndex+1] -ceq $namedMarket.MarketplaceName) 'native discovery filters the same explicit marketplace identity'
-    $discoveryCapture=@{exit_code=0;timed_out=$false;streams_complete=$true;cleanup_verified=$true;stdout=(@{installed=@();available=@(@{pluginId='controlflow-codex@controlflow-eval-unique-test';marketplaceName='controlflow-eval-unique-test';installed=$false;enabled=$false;source=@{source='local';path='C:/isolated/candidate/plugins/controlflow-codex'}})} | ConvertTo-Json -Depth 8)}
+    $discoveryCapture=@{exit_code=0;timed_out=$false;streams_complete=$true;cleanup_verified=$true;stdout=(@{installed=@();available=@(@{pluginId='controlflow-codex@controlflow-eval-unique-test';marketplaceName='controlflow-eval-unique-test';installed=$false;enabled=$false;source=@{source='local';path=$candidatePluginPath}})} | ConvertTo-Json -Depth 8)}
     Assert (-not (Test-E2EPluginDiscovery -Capture $discoveryCapture -Config $namedMarket).verified) 'available but uninstalled v3 plugin fails no-model preflight'
     $namedMarket.Variant='native'
     Assert (Test-E2EPluginDiscovery -Capture $discoveryCapture -Config $namedMarket).verified 'native inactive snapshot passes no-model preflight'
-    $namedMarket.Variant='v3';$activeRecord=@{pluginId='controlflow-codex@controlflow-eval-unique-test';marketplaceName='controlflow-eval-unique-test';installed=$true;enabled=$true;source=@{source='local';path='C:/isolated/candidate/plugins/controlflow-codex'}}
+    $namedMarket.Variant='v3';$activeRecord=@{pluginId='controlflow-codex@controlflow-eval-unique-test';marketplaceName='controlflow-eval-unique-test';installed=$true;enabled=$true;source=@{source='local';path=$candidatePluginPath}}
     $discoveryCapture.stdout=@{installed=@($activeRecord);available=@()} | ConvertTo-Json -Depth 8
     Assert (Test-E2EPluginDiscovery -Capture $discoveryCapture -Config $namedMarket).verified 'explicit installed and enabled local v3 identity passes no-model preflight'
-    $activeRecord.source.path='C:/another/source';$discoveryCapture.stdout=@{installed=@($activeRecord);available=@()} | ConvertTo-Json -Depth 8
+    $activeRecord.source.path=Join-Path $scratch 'another/source';$discoveryCapture.stdout=@{installed=@($activeRecord);available=@()} | ConvertTo-Json -Depth 8
     Assert (-not (Test-E2EPluginDiscovery -Capture $discoveryCapture -Config $namedMarket).verified) 'mismatched discovery source cannot certify candidate identity'
     $inventoryFirst=@([ordered]@{path='skills/entry/SKILL.md';sha256=('a'*64)},[ordered]@{path='plugin.json';sha256=('b'*64)})
     $inventoryOther=@([ordered]@{sha256=('B'*64);path='plugin.json'},[ordered]@{sha256=('A'*64);path='skills\entry\SKILL.md'})
