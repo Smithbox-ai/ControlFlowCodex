@@ -38,6 +38,9 @@ jobs:
     name: Contracts on macOS
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: macos-latest
+    env:
+      # The default /var temporary path traverses a symlink rejected by the installer.
+      TMPDIR: ${{ runner.temp }}
     steps:
       - uses: actions/checkout@v4
       - name: Show PowerShell version

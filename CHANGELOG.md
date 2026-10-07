@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Preserve literal Unix backslashes in Git source fingerprints and test fixtures.
+  macOS CI uses the runner's temporary directory while retaining installer
+  rejection of linked/reparse paths.
+
 - Favor the smallest coherent implementation with evidence for new structure.
   Existing MEDIUM/LARGE preflight and conformance review check material complexity
   beyond accepted scope; TRIVIAL/SMALL retain their existing workflow stages.

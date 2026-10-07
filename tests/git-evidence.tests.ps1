@@ -33,7 +33,32 @@ try{[IO.File]::WriteAllText($index,'broken index');Throws {Get-ControlFlowGitSna
 Git $r @('add','-A')|Out-Null;Git $r @('commit','-qm','deletion')|Out-Null
 $after=Get-ControlFlowSourceDigest $r $b;Assert ($before.digest -ceq $after.digest) 'deletion fingerprint survives commit'
 Assert (@($after.entries|Where-Object {$_.path -ceq 'owned.txt'})[0].mode -eq 'deleted') 'baseline deletion remains represented after commit'
-if(-not $IsWindows){File $r 'back\slash' 'path';$snap=Get-ControlFlowGitSnapshot $r;Assert ('back\slash' -cin $snap.untracked) 'literal Unix backslash survives Git parsing'}
+if(-not $IsWindows){
+    File $r 'back\slash' 'literal path'
+    Assert ([IO.File]::Exists([IO.Path]::Combine($r,'back\slash'))) 'fixture preserves literal Unix backslash'
+    File $r 'back/slash' 'nested path'
+    $snap=Get-ControlFlowGitSnapshot $r
+    Assert ('back\slash' -cin $snap.untracked) 'literal Unix backslash survives Git parsing'
+    $literal=@($snap.working|Where-Object path -CEQ 'back\slash')[0]
+    $nested=@($snap.working|Where-Object path -CEQ 'back/slash')[0]
+    Assert ($literal.mode -cne 'deleted' -and $literal.hash -cne $nested.hash) 'literal backslash file has its own effective content'
+    $before=Get-ControlFlowSourceDigest $r $b
+    File $r 'back\slash' 'changed literal path'
+    $changed=Get-ControlFlowSourceDigest $r $b
+    Assert ($before.digest -cne $changed.digest) 'literal backslash mutation changes fingerprint'
+    Git $r @('add','-A')|Out-Null
+    Git $r @('commit','-qm','literal backslash')|Out-Null
+    $committed=Get-ControlFlowSourceDigest $r $b
+    Assert ($changed.digest -ceq $committed.digest) 'literal backslash fingerprint survives commit'
+    [IO.File]::CreateSymbolicLink([IO.Path]::Combine($r,'literal-link'),'back\slash')|Out-Null
+    $linked=Get-ControlFlowGitSnapshot $r
+    $link=@($linked.working|Where-Object path -CEQ 'literal-link')[0]
+    $linkHash=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes('back\slash'))).ToLowerInvariant()
+    Assert ($link.mode -ceq '120000' -and $link.hash -ceq $linkHash) 'literal backslash target remains a symlink'
+    [IO.File]::Delete([IO.Path]::Combine($r,'back\slash'))
+    $dangling=Get-ControlFlowGitSnapshot $r
+    Assert (@($dangling.working|Where-Object path -CEQ 'literal-link')[0].hash -ceq $linkHash) 'dangling literal backslash target preserves symlink identity'
+}
 Write-Output "git-evidence final: $script:Count assertions passed"
 }finally{if($r -and [IO.Path]::GetFileName($r).StartsWith('cf-core-')){Remove-Item -LiteralPath $r -Recurse -Force}}
 $global:LASTEXITCODE=0

@@ -56,11 +56,12 @@ function Assert-CFBaseline([string]$Root,[string]$Baseline) {
     return $resolved
 }
 function Get-CFEffective([string]$Root,[string]$Path,[string]$Mode='100644') {
-    $full=Join-Path $Root $Path
-    $item=Get-Item -LiteralPath $full -Force -ErrorAction SilentlyContinue
-    if($null -eq $item){return @{path=$Path;mode='deleted';hash='deleted'}}
-    if($item.LinkType){return @{path=$Path;mode='120000';hash=(Get-CFHash $script:Utf8.GetBytes([string]$item.LinkTarget))}}
-    if($item.PSIsContainer){throw "UNSUPPORTED_SOURCE_TYPE: $Path"}
+    # Git paths are native filenames; the PowerShell provider rewrites Unix backslashes.
+    $full=[IO.Path]::Combine($Root,$Path)
+    $item=[IO.FileInfo]::new($full)
+    if($null -ne $item.LinkTarget){return @{path=$Path;mode='120000';hash=(Get-CFHash $script:Utf8.GetBytes($item.LinkTarget))}}
+    if([IO.Directory]::Exists($full)){throw "UNSUPPORTED_SOURCE_TYPE: $Path"}
+    if(-not $item.Exists){return @{path=$Path;mode='deleted';hash='deleted'}}
     if(-not $IsWindows){$modeBits=[IO.File]::GetUnixFileMode($full);$Mode=if(([int]$modeBits -band 73) -ne 0){'100755'}else{'100644'}}
     return @{path=$Path;mode=$Mode;hash=(Get-CFHash ([IO.File]::ReadAllBytes($full)))}
 }
