@@ -38,9 +38,6 @@ jobs:
     name: Contracts on macOS
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: macos-latest
-    env:
-      # The default /var temporary path traverses a symlink rejected by the installer.
-      TMPDIR: ${{ runner.temp }}
     steps:
       - uses: actions/checkout@v4
       - name: Show PowerShell version
@@ -52,9 +49,14 @@ jobs:
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
           Install-Module -Name Pester -MinimumVersion 5.0 -Scope CurrentUser -Force -AllowClobber
       - name: Run structural contract suite
+        # The default /var temporary path traverses a symlink rejected by the installer.
+        env:
+          TMPDIR: ${{ runner.temp }}
         shell: pwsh
         run: ./tests/run-contract-tests.ps1 -UsePester
       - name: Validate executable E2E corpora (no models)
+        env:
+          TMPDIR: ${{ runner.temp }}
         shell: pwsh
         run: |
           ./evals/run-e2e.ps1 -RepoRoot . -Suite Pilot -ValidateOnly

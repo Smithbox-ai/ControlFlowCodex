@@ -5,6 +5,8 @@
 - Preserve literal Unix backslashes in Git source fingerprints and test fixtures.
   macOS CI uses the runner's temporary directory while retaining installer
   rejection of linked/reparse paths.
+- Resolve the contract runner path during Pester test execution so Pester 5's
+  separate discovery phase does not leave the path unset.
 
 - Favor the smallest coherent implementation with evidence for new structure.
   Existing MEDIUM/LARGE preflight and conformance review check material complexity
