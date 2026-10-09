@@ -20,7 +20,7 @@ Assert ($e.digest -ceq $g.digest) 'commit same contents preserves fingerprint'
 Throws {Get-ControlFlowSourceDigest -RepoRoot $r -Baseline 'deadbeef'} 'invalid baseline fails closed'
 Throws {Get-ControlFlowGitSnapshot -RepoRoot ([IO.Path]::GetTempPath())} 'not a git repo fails closed'
 Write-Output "git-evidence: $script:Count assertions passed"
-}finally{Remove-Item -LiteralPath $r -Recurse -Force}
+}finally{RemoveFixture $r}
 $r=NewFixture
 try {
 $b=Git $r @('rev-parse','HEAD');$tree=Git $r @('rev-parse','HEAD^{tree}')
@@ -60,21 +60,21 @@ if(-not $IsWindows){
     Assert (@($dangling.working|Where-Object path -CEQ 'literal-link')[0].hash -ceq $linkHash) 'dangling literal backslash target preserves symlink identity'
 }
 Write-Output "git-evidence final: $script:Count assertions passed"
-}finally{if($r -and [IO.Path]::GetFileName($r).StartsWith('cf-core-')){Remove-Item -LiteralPath $r -Recurse -Force}}
+}finally{if($r -and [IO.Path]::GetFileName($r).StartsWith('cf-core-')){RemoveFixture $r}}
 $global:LASTEXITCODE=0
 $r=NewFixture
 try {
 $b=Git $r @('rev-parse','HEAD')
 Git $r @('update-index','--assume-unchanged','owned.txt')|Out-Null;File $r 'owned.txt' 'hidden user edit'
 Throws {Get-ControlFlowGitSnapshot $r} 'assume-unchanged cannot hide initial foreign user content'
-$p=Contract $r 'SMALL' 'required'
+$p=Contract $r 'SMALL' 'required' -SessionId 'hidden-index'
 Throws {Start-ControlFlowRun $r $p 'hidden-index'} 'run start fails closed on hidden index entries'
 Git $r @('update-index','--no-assume-unchanged','owned.txt')|Out-Null
 Git $r @('update-index','--skip-worktree','owned.txt')|Out-Null
 Throws {Get-ControlFlowSourceDigest $r $b} 'skip-worktree observation is unsupported and fail-closed'
 Assert ((Git $r @('ls-files','-v','owned.txt')).StartsWith('S ')) 'observation never clears user skip-worktree flag'
 Write-Output "git-evidence hidden flags final: $script:Count assertions passed"
-}finally{if($r -and [IO.Path]::GetFileName($r).StartsWith('cf-core-')){Remove-Item -LiteralPath $r -Recurse -Force}}
+}finally{if($r -and [IO.Path]::GetFileName($r).StartsWith('cf-core-')){RemoveFixture $r}}
 $global:LASTEXITCODE=0
 $r=NewFixture
 try {
@@ -89,5 +89,5 @@ $committed=Get-ControlFlowSourceDigest $r $older
 Assert ($unstaged.digest -ceq $committed.digest) 'deleting post-baseline addition has commit-invariant effective absence'
 Assert (@($committed.entries|Where-Object {$_.path -ceq 'later.txt'}).Count -eq 0) 'absent path absent in fixed baseline needs no tombstone'
 Write-Output "git-evidence older baseline final: $script:Count assertions passed"
-}finally{if($r -and [IO.Path]::GetFileName($r).StartsWith('cf-core-')){Remove-Item -LiteralPath $r -Recurse -Force}}
+}finally{if($r -and [IO.Path]::GetFileName($r).StartsWith('cf-core-')){RemoveFixture $r}}
 $global:LASTEXITCODE=0

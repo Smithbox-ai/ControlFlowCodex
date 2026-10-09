@@ -16,7 +16,10 @@ the TODO list does not replace the saved contract or evidence.
 
 For new plans use `schema_version: 3.0.0`,
 `schemas/plan-meta-v3.schema.json`, and `plans/templates/plan.meta.v3.json`.
-Write `plans/artifacts/<task-slug>/plan.meta.json`; `task_id` is that slug.
+Resolve `contract_path` with the bundled `get-storage-paths.ps1 -RepoRoot <repo>
+-TaskId <task-slug> -SessionId <native-id> -Create`, then write `plan.meta.json`
+there; `task_id` is that slug. Omit SessionId only for explicit manual fallback.
+Keep all bookkeeping outside the project; unavailable storage blocks setup.
 
 Record the real baseline commit and observed `dirty_paths`, intended `scope`,
 ID-bearing `criteria`, executable ID-bearing `checks` with working directories

@@ -1,5 +1,24 @@
 # V3 migration and rollback
 
+## External state storage
+
+Runtime state now lives outside Git projects. Resolve the new session's canonical
+`contract_path` with `scripts/get-storage-paths.ps1 -RepoRoot <repo> -TaskId <id>
+-SessionId <native-id> -Create` (omit SessionId for explicit manual fallback).
+After explicit user authorization, copy a reviewed v3 contract to that path,
+check its baseline/scope, and start a new run. Capture checks and approvals again.
+An old run stores absolute paths, binding and immutable evidence: copying or
+editing its state is not an approved migration and cannot certify a fresh run.
+
+Existing `plans/artifacts` folders are preserved, never silently adopted or
+deleted. They may be moved to a separate external audit archive after verifying
+their contents and obtaining explicit authorization. Keep the archived bytes
+unchanged; they are historical evidence, not active state. If external storage
+is unavailable or lacks native write permission, report the error and use an
+approved external root. Never fall back to a project folder or add ignore rules.
+
+## Contract schema and distribution
+
 V3 is a clean distribution: retired v2 runtime, validators, templates, examples
 and artifact-scoring harness are not shipped. V3 runtime gates never activate
 from v2 metadata or prose verdicts. Use a separately archived v2 distribution

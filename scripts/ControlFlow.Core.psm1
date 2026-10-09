@@ -2,6 +2,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $script:CoreModuleRoot=$PSScriptRoot
 . "$PSScriptRoot/lib/Git.ps1"
+. "$PSScriptRoot/lib/Storage.ps1"
 . "$PSScriptRoot/lib/Contract.ps1"
 . "$PSScriptRoot/lib/Ledger.ps1"
 . "$PSScriptRoot/lib/Interrupts.ps1"

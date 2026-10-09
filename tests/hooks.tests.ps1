@@ -24,7 +24,7 @@ try {
     Assert ((Hook $r 'unmanaged').Count -eq 0) 'No active v3 run leaves native session unmanaged'
     File $r 'plans/old-plan.md' 'V2 plan with arbitrary prose DONE'
     Assert ((Hook $r 'unmanaged').Count -eq 0) 'V2 prose cannot activate v3 Stop'
-    $p=Contract $r
+    $p=Contract $r -SessionId 'session-a'
     $run=Start-ControlFlowRun $r $p 'session-a'
     Assert ((Hook $r 'session-b').Count -eq 0) 'Foreign session never adopts another run'
     [IO.Directory]::CreateDirectory((Join-Path $r 'subdir'))|Out-Null
@@ -68,5 +68,5 @@ try {
     $resolved=[IO.Path]::GetFullPath($r)
     $temp=[IO.Path]::GetFullPath([IO.Path]::GetTempPath())
     if(-not $resolved.StartsWith($temp,[StringComparison]::OrdinalIgnoreCase) -or -not [IO.Path]::GetFileName($resolved).StartsWith('cf-core-')){throw 'Unsafe fixture cleanup'}
-    Remove-Item -LiteralPath $resolved -Recurse -Force
+    RemoveFixture $r
 }

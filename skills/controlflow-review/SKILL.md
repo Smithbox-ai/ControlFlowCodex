@@ -39,7 +39,7 @@ interruption, Plan Mode, or BLOCKED ends the turn without DONE.
 
 ## Input
 
-- Read the approved `plans/artifacts/<task-slug>/plan.meta.json` and its active
+- Read the approved external `state.contract_path` and its active
   run. MEDIUM/LARGE also have a brief rationale inside the run directory.
 - Read the aggregate diff. If native `/review` results are available, consume
   them.

@@ -10,6 +10,13 @@ marker leaves the session unmanaged. A corrupt marker, invalid reference, wrong
 binding, or missing identity is UNVERIFIABLE. No older v2 plan is adopted and no
 foreign session is updated.
 
+Markers and evidence live in the dedicated external ControlFlow state root,
+not the callback's working directory. `CONTROLFLOW_STATE_ROOT`, when configured,
+must be inherited by both tools and the native hook host; otherwise the default
+`CODEX_HOME/controlflow` is used. Subdirectories resolve to the same physical
+Git worktree; a sibling worktree or another session cannot adopt its marker.
+The hook never creates project-local state or scans old project artifact folders.
+
 Stop runs a fresh completion gate. PASS is required for completion; publishing
 COMPLETED repeats the gate under the state transaction. A failed active gate
 continues only within the persistent 3-identical/6-total bounds. The signature

@@ -26,7 +26,7 @@ try {
     Assert (Test-Path -LiteralPath $zip) 'Package ZIP was not produced'
     Expand-Archive -LiteralPath $zip -DestinationPath (Join-Path $temp 'extracted')
     $extracted = Join-Path $temp 'extracted/controlflow-codex'
-    foreach ($file in @('plugin.json', '.codex-plugin/plugin.json', 'plans/templates/plan.meta.v3.json', 'plans/examples/small-v3.meta.json', 'scripts/validate-contract.ps1', 'scripts/install.ps1', 'scripts/ControlFlow.Package.psm1')) {
+    foreach ($file in @('plugin.json', '.codex-plugin/plugin.json', 'plans/templates/plan.meta.v3.json', 'plans/examples/small-v3.meta.json', 'scripts/validate-contract.ps1', 'scripts/get-storage-paths.ps1', 'scripts/lib/Storage.ps1', 'scripts/install.ps1', 'scripts/ControlFlow.Package.psm1')) {
         Assert (Test-Path -LiteralPath (Join-Path $extracted $file) -PathType Leaf) "Extracted package lost nested file: $file"
     }
     $portable = Get-Content (Join-Path $extracted 'plugin.json') -Raw | ConvertFrom-Json

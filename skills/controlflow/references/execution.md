@@ -14,14 +14,23 @@ Progress does not replace the contract, captured evidence, or delivery gates.
    (`ChangedFiles`, `BehaviorChange`, `CrossBoundary`, `ProductQuestion`,
    `HighRisk`) for the observed signals. Do not downgrade an unresolved HIGH
    risk because only one file changes. TRIVIAL returns to native execution.
-2. Write `plans/artifacts/<task_id>/plan.meta.json` using
-   `plans/templates/plan.meta.v3.json` and `schemas/plan-meta-v3.schema.json`.
+2. Resolve the external location with `get-storage-paths.ps1 -RepoRoot <repo>
+   -TaskId <task_id> -SessionId <native-id> -Create`. Write the returned
+   `contract_path` using `plans/templates/plan.meta.v3.json` and
+   `schemas/plan-meta-v3.schema.json`. Omit SessionId for explicit manual fallback.
+   The default state root is `<CODEX_HOME>/controlflow` (`~/.codex/controlflow`
+   when CODEX_HOME is unset); `CONTROLFLOW_STATE_ROOT` can select an absolute
+   external root. Tools and native hooks must inherit the same setting.
+   A root inside any Git project, relative root, link or unavailable storage
+   blocks setup. Obtain native permission for the dedicated external directory
+   when required; never bypass permissions or fall back to project bookkeeping.
+   Do not create local state directories or edit `.gitignore` to hide artifacts.
    Criteria and checks have unique IDs; each check declares its command,
    repository-relative working directory, and criterion references. Use the
    real HEAD SHA and observed dirty paths. `commit.mode` defaults to `none` and
    becomes `required` only for an explicit user commit request. SMALL needs only
    JSON; MEDIUM/LARGE also write brief rationale **inside the run directory**
-   after creation so bookkeeping is excluded precisely from source identity.
+    after creation so bookkeeping stays outside repository source identity.
 3. Run `validate-contract.ps1 -Path <contract>`. Start with
    `start-run.ps1 -RepoRoot <repo> -ContractPath <contract> -SessionId <native-id>`.
    Obtain the session from native runtime identity, such as `CODEX_THREAD_ID`

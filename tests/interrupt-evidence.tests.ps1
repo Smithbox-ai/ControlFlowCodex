@@ -2,7 +2,7 @@
 LoadCore
 $r=NewFixture
 try {
-$p=Contract $r;$run=Start-ControlFlowRun $r $p 'interrupt-busy';$path=$run.run_path
+$p=Contract $r -SessionId 'interrupt-busy';$run=Start-ControlFlowRun $r $p 'interrupt-busy';$path=$run.run_path
 $lock=[IO.File]::Open((Join-Path $path 'writer.lock'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
 try{
 $watch=[Diagnostics.Stopwatch]::StartNew();$interrupt=Request-ControlFlowInterrupt $r 'interrupt-busy' -TurnId 'native-turn-1';$watch.Stop()
@@ -34,10 +34,10 @@ $sub=Join-Path $r 'nested/cwd';[IO.Directory]::CreateDirectory($sub)|Out-Null
 $subInterrupt=Request-ControlFlowInterrupt $sub 'interrupt-busy'
 Assert ($subInterrupt.run_path -eq $path) 'native cwd subdirectory resolves canonical active run'
 Write-Output "interrupt-evidence busy/ack: $script:Count assertions passed"
-}finally{if($r -and [IO.Path]::GetFileName($r).StartsWith('cf-core-')){Remove-Item -LiteralPath $r -Recurse -Force}}
+}finally{if($r -and [IO.Path]::GetFileName($r).StartsWith('cf-core-')){RemoveFixture $r}}
 $r=NewFixture
 try {
-$p=Contract $r 'SMALL' 'none' "[IO.File]::WriteAllText('capture.started','yes'); Start-Sleep -Seconds 3; Write-Output 'finished'"
+$p=Contract $r 'SMALL' 'none' "[IO.File]::WriteAllText('capture.started','yes'); Start-Sleep -Seconds 3; Write-Output 'finished'" -SessionId 'interrupt-capture'
 $run=Start-ControlFlowRun $r $p 'interrupt-capture';$path=$run.run_path
 $info=[Diagnostics.ProcessStartInfo]::new();$info.FileName=Join-Path $PSHOME $(if($IsWindows){'pwsh.exe'}else{'pwsh'});$info.UseShellExecute=$false;$info.RedirectStandardOutput=$true;$info.RedirectStandardError=$true;$info.CreateNoWindow=$true
 foreach($a in @('-NoProfile','-File',"$PSScriptRoot/core-child.ps1",'-RepoRoot',$r,'-RunPath',$path,'-Action','capture')){$info.ArgumentList.Add($a)}
@@ -56,10 +56,10 @@ $resumed=Update-ControlFlowRun $r $path @{type='resume';user_decision_ref='user-
 Assert ($resumed.state.status -eq 'ACTIVE' -and $resumed.state.acknowledged_interrupt_id -eq $interrupt.interrupt_id) 'resume acknowledges notification after capture publication'
 }finally{if(-not $child.HasExited){$child.Kill($true)};$child.Dispose()}
 Write-Output "interrupt-evidence actual capture: $script:Count assertions passed"
-}finally{if($r -and [IO.Path]::GetFileName($r).StartsWith('cf-core-')){Remove-Item -LiteralPath $r -Recurse -Force}}
+}finally{if($r -and [IO.Path]::GetFileName($r).StartsWith('cf-core-')){RemoveFixture $r}}
 $r=NewFixture
 try {
-$p=Contract $r 'SMALL' 'none' "[Console]::Out.Write(('x' * 16777216))";$run=Start-ControlFlowRun $r $p 'interrupt-large';$path=$run.run_path
+$p=Contract $r 'SMALL' 'none' "[Console]::Out.Write(('x' * 16777216))" -SessionId 'interrupt-large';$run=Start-ControlFlowRun $r $p 'interrupt-large';$path=$run.run_path
 $capture=Capture-ControlFlowCheck $r $path 'check-1'
 Assert ((Get-Item (Join-Path $path $capture.stdout_ref.path)).Length -ge 16777216) 'real large command output exists'
 $stream=[IO.File]::Open((Join-Path $path $capture.stdout_ref.path),[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
@@ -70,5 +70,5 @@ Write-Output ("interrupt fast path elapsed_ms="+[math]::Round($watch.Elapsed.Tot
 }finally{$stream.Dispose()}
 Assert ((Read-ControlFlowRun $r $path).state.status -eq 'INTERRUPTED') 'large-output run remains interrupted on full verified read'
 Write-Output "interrupt-evidence final: $script:Count assertions passed"
-}finally{if($r -and [IO.Path]::GetFileName($r).StartsWith('cf-core-')){Remove-Item -LiteralPath $r -Recurse -Force}}
+}finally{if($r -and [IO.Path]::GetFileName($r).StartsWith('cf-core-')){RemoveFixture $r}}
 $global:LASTEXITCODE=0

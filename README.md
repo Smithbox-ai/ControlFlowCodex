@@ -47,11 +47,26 @@ remain available. See [the execution reference](skills/controlflow/references/ex
 
 ## Evidence and completion
 
-The schema version is `3.0.0`. A contract lives at
-`plans/artifacts/<task_id>/plan.meta.json`; immutable run evidence lives below
-`runs/<run_id>/`. `state.json` publishes the coherent revision. The active
+The schema version is `3.0.0`. All runtime bookkeeping is stored outside project
+directories, by default under `<CODEX_HOME>/controlflow` (or
+`~/.codex/controlflow` when CODEX_HOME is unset). Set `CONTROLFLOW_STATE_ROOT` to
+an absolute external directory if the host requires another writable location;
+tools and native hooks must inherit the same value. Relative, linked or
+project-local roots are rejected. Missing write permission is an explicit error,
+never a fallback to the project. Native Codex sessions and databases are untouched.
+
+Use `scripts/get-storage-paths.ps1 -RepoRoot <repo> -TaskId <task_id>
+-SessionId <native-id> -Create` to prepare storage and obtain `contract_path`.
+Omit SessionId for explicit manual fallback. Each physical worktree/Git identity
+and session has a separate task contract and active marker; immutable evidence
+lives below that task's `runs/<run_id>/`. `state.json` publishes the coherent revision. The active
 session marker is bound to the physical worktree, Git directory, session, task,
 and run. A v2 plan or another session cannot activate a v3 gate.
+
+Old project-local runs are never automatically adopted, rewritten or deleted.
+See [migration](docs/migration-v3.md) before moving existing data. Only requested
+task deliverables or explicitly requested report exports belong in the project;
+ControlFlow never adds bookkeeping directories or ignore rules there.
 
 `capture-check.ps1` executes one declared command and records its working
 directory, exit status, output hashes, and source identity before and after.

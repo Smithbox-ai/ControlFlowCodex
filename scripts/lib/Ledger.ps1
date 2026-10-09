@@ -1,6 +1,6 @@
 function Assert-CFNoLinks([string]$Path) {
     $cursor=[IO.Path]::GetFullPath($Path)
-    while($cursor){$item=Get-Item -LiteralPath $cursor -Force -ErrorAction SilentlyContinue;if($item -and ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'ARTIFACT_LINK_FORBIDDEN'};$next=[IO.Path]::GetDirectoryName($cursor);if($next -eq $cursor){break};$cursor=$next}
+    while($cursor){$item=[IO.FileInfo]::new($cursor);if($null -ne $item.LinkTarget -or (([IO.File]::Exists($cursor) -or [IO.Directory]::Exists($cursor)) -and ($item.Attributes -band [IO.FileAttributes]::ReparsePoint))){throw 'ARTIFACT_LINK_FORBIDDEN'};$next=[IO.Path]::GetDirectoryName($cursor);if($next -eq $cursor){break};$cursor=$next}
 }
 function Write-CFFlushed([string]$Path,[byte[]]$Bytes) {
     Assert-CFNoLinks $Path
@@ -8,14 +8,14 @@ function Write-CFFlushed([string]$Path,[byte[]]$Bytes) {
     try{$stream.Write($Bytes,0,$Bytes.Length);$stream.Flush($true)}finally{$stream.Dispose()}
 }
 function Write-CFImmutable([string]$RunPath,[string]$Folder,[byte[]]$Bytes,[string]$Extension='json') {
-    $relative="$Folder/$([guid]::NewGuid().ToString('N')).$Extension";$path=Join-Path $RunPath $relative
+    $relative="$Folder/$([guid]::NewGuid().ToString('N')).$Extension";$path=[IO.Path]::Combine($RunPath,$relative)
     Assert-CFNoLinks $path;[IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($path))|Out-Null
     Write-CFFlushed $path $Bytes
     return @{path=$relative;sha256=(Get-CFHash $Bytes)}
 }
 function Read-CFReference([string]$RunPath,$Reference,[switch]$Binary) {
     if($Reference.path -cnotmatch '^(initial|evidence|output)/[a-f0-9]{32}\.(json|stdout\.bin|stderr\.bin)$' -or $Reference.sha256 -cnotmatch '^[a-f0-9]{64}$'){throw 'INVALID_LEDGER_REFERENCE'}
-    $path=Join-Path $RunPath $Reference.path;Assert-CFNoLinks $path
+    $path=[IO.Path]::Combine($RunPath,$Reference.path);Assert-CFNoLinks $path
     $bytes=[IO.File]::ReadAllBytes($path)
     if((Get-CFHash $bytes) -cne $Reference.sha256){throw 'CORRUPT_LEDGER_REFERENCE'}
     if($Binary){return ,$bytes}
@@ -23,35 +23,33 @@ function Read-CFReference([string]$RunPath,$Reference,[switch]$Binary) {
 }
 function Publish-CFState([string]$RunPath,$State,$Evidence) {
     $State.evidence_ref=Write-CFImmutable $RunPath 'evidence' $script:Utf8.GetBytes(($Evidence|ConvertTo-Json -Depth 80 -Compress))
-    $tmp=Join-Path $RunPath ([guid]::NewGuid().ToString('N')+'.tmp')
+    $tmp=[IO.Path]::Combine($RunPath,([guid]::NewGuid().ToString('N')+'.tmp'))
     Write-CFFlushed $tmp $script:Utf8.GetBytes(($State|ConvertTo-Json -Depth 80 -Compress))
-    $target=Join-Path $RunPath 'state.json';Assert-CFNoLinks $target
+    $target=[IO.Path]::Combine($RunPath,'state.json');Assert-CFNoLinks $target
     if([IO.File]::Exists($target)){[IO.File]::Move($tmp,$target,$true)}else{[IO.File]::Move($tmp,$target)}
 }
-function Get-CFActivePath([string]$RepoRoot,[string]$SessionId) { Join-Path $RepoRoot ('plans/artifacts/.controlflow/active/'+(Get-CFHash $script:Utf8.GetBytes($SessionId))+'.json') }
+function Get-CFActivePath([string]$RepoRoot,[string]$SessionId) { (Get-CFStorageContext $RepoRoot $SessionId).active_path }
 function Start-ControlFlowRun {
     param([Parameter(Mandatory)][string]$RepoRoot,[Parameter(Mandatory)][string]$ContractPath,[string]$SessionId,[switch]$ManualFallback)
     if(-not $SessionId -and -not $ManualFallback){throw 'TRUSTED_SESSION_REQUIRED'}
     $identity=Get-CFIdentity $RepoRoot;$RepoRoot=$identity.worktree_realpath
     $read=Read-ControlFlowContract $ContractPath;$contract=$read.contract
-    $canonical=Join-Path $RepoRoot "plans/artifacts/$($contract.task_id)/plan.meta.json"
+    $paths=Get-ControlFlowStoragePaths $RepoRoot $contract.task_id $SessionId
+    $canonical=$paths.contract_path
     if([IO.Path]::GetFullPath($ContractPath) -cne [IO.Path]::GetFullPath($canonical)){throw 'CONTRACT_PATH_BINDING_MISMATCH'}
     Assert-CFNoLinks $canonical
     Assert-CFBaseline $RepoRoot $contract.baseline.commit|Out-Null
-    $id=[guid]::NewGuid().ToString('N');$runPath=Join-Path $RepoRoot "plans/artifacts/$($contract.task_id)/runs/$id"
+    $id=[guid]::NewGuid().ToString('N');$runPath=[IO.Path]::Combine($paths.task_path,'runs',$id)
     $initial=Get-ControlFlowGitSnapshot $RepoRoot
     $source=Get-ControlFlowSourceDigest $RepoRoot $contract.baseline.commit $runPath $SessionId
     $initial.source=$source
-    $initial.dirty_paths=@($initial.dirty_paths|Where-Object {-not (Test-CFReserved $_ $RepoRoot $runPath $SessionId)})
-    $initial.index=@($initial.index|Where-Object {-not (Test-CFReserved $_.path $RepoRoot $runPath $SessionId)})
-    $initial.working=@($initial.working|Where-Object {-not (Test-CFReserved $_.path $RepoRoot $runPath $SessionId)})
-    $initial.untracked=@($initial.untracked|Where-Object {-not (Test-CFReserved $_ $RepoRoot $runPath $SessionId)})
     Assert-CFNoLinks $runPath;[IO.Directory]::CreateDirectory($runPath)|Out-Null
     $identity.session_id=$SessionId
     $state=@{schema_version='3.0.0';task_id=$contract.task_id;run_id=$id;binding=$identity;revision=0;status='ACTIVE';contract_path=$canonical;initial_contract_digest=$read.digest;baseline_commit=$contract.baseline.commit;manual_fallback=[bool]$ManualFallback;continuations=@{total=0;signature='';repeated=0};structured_reason=$null;acknowledged_interrupt_id=$null;initial_ref=(Write-CFImmutable $runPath 'initial' $script:Utf8.GetBytes(($initial|ConvertTo-Json -Depth 80 -Compress)));evidence_ref=$null}
     Publish-CFState $runPath $state @{events=@();checks=@();candidate=$null}
     if($SessionId){
         $active=Get-CFActivePath $RepoRoot $SessionId;Assert-CFNoLinks $active;[IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($active))|Out-Null
+        Assert-CFNoLinks ($active+'.lock')
         $activeLock=[IO.File]::Open($active+'.lock',[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
         try {
             if([IO.File]::Exists($active)) { $prior=Get-ControlFlowActiveRun $RepoRoot $SessionId;if($prior.state.status -notin @('COMPLETED','CANCELLED')){throw 'SESSION_ALREADY_ACTIVE'} }
@@ -85,10 +83,9 @@ function Get-ControlFlowActiveRun {
 function Get-CFRunSource([string]$RepoRoot,[string]$RunPath,$State) { Get-ControlFlowSourceDigest $RepoRoot $State.baseline_commit $RunPath $State.binding.session_id }
 function Open-CFWriter([string]$RunPath,[string]$RepoRoot) {
     $identity=Get-CFIdentity $RepoRoot
-    $relative=[IO.Path]::GetRelativePath($identity.worktree_realpath,[IO.Path]::GetFullPath($RunPath)).Replace('\','/')
-    if($relative -cnotmatch '^plans/artifacts/[a-z0-9][a-z0-9-]{0,63}/runs/[a-f0-9]{32}$'){throw 'INVALID_RUN_PATH'}
-    Assert-CFNoLinks $RunPath
-    return [IO.File]::Open((Join-Path $RunPath 'writer.lock'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+    Get-CFRunLocation $RepoRoot $RunPath $identity|Out-Null
+    $lockPath=[IO.Path]::Combine($RunPath,'writer.lock');Assert-CFNoLinks $lockPath
+    return [IO.File]::Open($lockPath,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
 }
 function Update-ControlFlowRun {
     param([Parameter(Mandatory)][string]$RepoRoot,[Parameter(Mandatory)][string]$RunPath,[Parameter(Mandatory)]$Event,[Nullable[int]]$ExpectedRevision)

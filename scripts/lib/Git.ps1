@@ -68,6 +68,7 @@ function Get-CFEffective([string]$Root,[string]$Path,[string]$Mode='100644') {
 function Get-ControlFlowGitSnapshot {
     param([Parameter(Mandatory)][string]$RepoRoot,[string]$ArtifactRoot,[string]$SessionId)
     $identity=Get-CFIdentity $RepoRoot;$root=$identity.worktree_realpath
+    if($ArtifactRoot){Get-CFRunLocation $root $ArtifactRoot $identity|Out-Null}
     $index=Get-CFMap;$paths=Get-CFMap
     foreach($record in (Get-CFNul (Invoke-CFGit $root @('ls-files','--stage','-z')))) {
         if($record -cnotmatch '^(\d{6}) ([a-f0-9]+) ([0-3])\t([\s\S]+)$'){throw 'GIT_INVALID_INDEX_RECORD'}
@@ -94,17 +95,8 @@ function Get-ControlFlowGitSnapshot {
         $dirty[$record.Substring(3)]=$true
         if($record.Substring(0,2) -match '[RC]'){$i++;if($i -ge $status.Count){throw 'GIT_TRUNCATED_RENAME'};$dirty[$status[$i]]=$true}
     }
-    $effective=@(foreach($path in (Get-CFSorted $paths.Keys)){if(-not (Test-CFReserved $path $root $ArtifactRoot $SessionId)){Get-CFEffective $root $path $paths[$path]}})
+    $effective=@(foreach($path in (Get-CFSorted $paths.Keys)){Get-CFEffective $root $path $paths[$path]})
     return @{binding=$identity;head=(Get-CFGitText $root @('rev-parse','HEAD'));index=@(foreach($p in (Get-CFSorted $index.Keys)){$index[$p]});working=$effective;untracked=$untracked;dirty_paths=@(Get-CFSorted $dirty.Keys)}
-}
-function Test-CFReserved([string]$Path,[string]$RepoRoot,[string]$ArtifactRoot,[string]$SessionId='') {
-    if(-not $ArtifactRoot){return $false}
-    $rel=[IO.Path]::GetRelativePath($RepoRoot,[IO.Path]::GetFullPath($ArtifactRoot)).Replace('\','/')
-    if($rel -cnotmatch '^plans/artifacts/([a-z0-9][a-z0-9-]{0,63})/runs/([a-f0-9]{32})$'){throw 'INVALID_ARTIFACT_ROOT'}
-    $task=$Matches[1]
-    if($Path.StartsWith($rel+'/',[StringComparison]::Ordinal) -or $Path -ceq "plans/artifacts/$task/plan.meta.json"){return $true}
-    if($SessionId){$hash=Get-CFHash $script:Utf8.GetBytes($SessionId);if($Path -ceq "plans/artifacts/.controlflow/active/$hash.json" -or $Path -ceq "plans/artifacts/.controlflow/active/$hash.json.lock"){return $true}}
-    return $false
 }
 function Get-ControlFlowSourceDigest {
     param([Parameter(Mandatory)][string]$RepoRoot,[Parameter(Mandatory)]$Baseline,[string]$ArtifactRoot,[string]$SessionId)
@@ -115,7 +107,6 @@ function Get-ControlFlowSourceDigest {
     foreach($entry in $snapshot.working){$map[$entry.path]=$entry}
     foreach($path in $tree.Keys){if(-not $map.ContainsKey($path)){$map[$path]=Get-CFEffective $RepoRoot $path $tree[$path].mode}}
     $entries=@(foreach($path in (Get-CFSorted $map.Keys)){
-        if(Test-CFReserved $path $RepoRoot $ArtifactRoot $SessionId){continue}
         $e=$map[$path]
         # A path absent both now and in the fixed baseline has one canonical
         # identity, regardless of whether HEAD/index once introduced it.

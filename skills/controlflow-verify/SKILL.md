@@ -32,7 +32,7 @@ Old v2 verdicts never activate v3 gates. See
 
 ## Input
 
-- Read `plans/artifacts/<task-slug>/plan.meta.json` and the active run from disk;
+- Read the active run's external `state.contract_path` and its evidence from disk;
   do not verify a chat copy. The JSON contract is canonical.
 - Validate against the bundled `schemas/plan-meta-v3.schema.json`.
 

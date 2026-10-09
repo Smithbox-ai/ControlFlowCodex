@@ -2,13 +2,16 @@ function Get-CFEntriesMap($Entries) { $map=Get-CFMap;foreach($entry in $Entries)
 function Get-CFEntryIdentity($Entry) { if($null -eq $Entry){return 'absent'};return "$($Entry.mode):$($Entry.hash)" }
 function Get-CFIndexIdentity($Entry) { if($null -eq $Entry){return 'absent'};return "$($Entry.mode):$($Entry.oid):$($Entry.stage)" }
 function New-CFCandidate([string]$RepoRoot,[string]$RunPath,[string[]]$OwnedPaths,$State,[string]$SourceDigest,[string]$ContractDigest) {
-    $indexPath=Join-Path $RunPath ([guid]::NewGuid().ToString('N')+'.index')
+    $indexPath=[IO.Path]::Combine($RunPath,([guid]::NewGuid().ToString('N')+'.index'))
     $envVars=@{GIT_INDEX_FILE=$indexPath};$parent=Get-CFGitText $RepoRoot @('rev-parse','HEAD')
+    # External namespaces may exceed Windows MAX_PATH. Keep this override local
+    # to the temporary index operations rather than changing repository config.
+    $gitOptions=@('-c','core.longpaths=true')
     try {
-        Invoke-CFGit $RepoRoot @('read-tree',$parent) $envVars|Out-Null
+        Invoke-CFGit $RepoRoot ($gitOptions+@('read-tree',$parent)) $envVars|Out-Null
         $paths=@($OwnedPaths|ForEach-Object {':(literal)'+$_})
-        Invoke-CFGit $RepoRoot (@('add','-A','--')+$paths) $envVars|Out-Null
-        $tree=Get-CFGitText $RepoRoot @('write-tree') $envVars
+        Invoke-CFGit $RepoRoot ($gitOptions+@('add','-A','--')+$paths) $envVars|Out-Null
+        $tree=Get-CFGitText $RepoRoot ($gitOptions+@('write-tree')) $envVars
         $after=Get-CFRunSource $RepoRoot $RunPath $State
         if($after.digest -cne $SourceDigest -or (Read-ControlFlowContract $State.contract_path).digest -cne $ContractDigest){throw 'SOURCE_CHANGED_DURING_GATE'}
         return @{parent=$parent;tree=$tree;owned_paths=$OwnedPaths;source_digest=$SourceDigest;contract_digest=$ContractDigest;recorded_at=[DateTime]::UtcNow.ToString('o')}
@@ -82,7 +85,7 @@ function Test-ControlFlowGate {
         foreach($path in $oldIndex.Keys){[void]$indexPaths.Add($path)}
         foreach($path in $newIndex.Keys){[void]$indexPaths.Add($path)}
         foreach($path in (Get-CFSorted $indexPaths)) {
-            if($foreign.Contains($path) -or $path -cin $owned -or (Test-CFReserved $path $RepoRoot $RunPath $s.binding.session_id)){continue}
+            if($foreign.Contains($path) -or $path -cin $owned){continue}
             $old=if($oldIndex.ContainsKey($path)){$oldIndex[$path]}else{$null}
             $new=if($newIndex.ContainsKey($path)){$newIndex[$path]}else{$null}
             if((Get-CFIndexIdentity $old) -cne (Get-CFIndexIdentity $new)){$reasons.Add('UNOWNED_INDEX_CHANGED:'+$path)}

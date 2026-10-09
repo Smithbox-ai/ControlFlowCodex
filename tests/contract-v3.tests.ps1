@@ -8,18 +8,18 @@ $p=Contract $r
 $c=Read-ControlFlowContract -Path $p
 Assert ($c.contract.task_id -eq 'test-task') 'valid v3 contract read'
 $v=Get-Content $p -Raw|ConvertFrom-Json -AsHashtable
-$v.checks[0].criteria=@('missing');File $r 'plans/artifacts/test-task/plan.meta.json' ($v|ConvertTo-Json -Depth 20)
+$v.checks[0].criteria=@('missing');[IO.File]::WriteAllText($p,($v|ConvertTo-Json -Depth 20))
 Throws {Read-ControlFlowContract $p} 'invalid criterion reference rejected'
-$v.checks[0].criteria=@('C1');$v.phases=@(@{id='P1';depends_on=@('P2')},@{id='P2';depends_on=@('P1')});File $r 'plans/artifacts/test-task/plan.meta.json' ($v|ConvertTo-Json -Depth 20)
+$v.checks[0].criteria=@('C1');$v.phases=@(@{id='P1';depends_on=@('P2')},@{id='P2';depends_on=@('P1')});[IO.File]::WriteAllText($p,($v|ConvertTo-Json -Depth 20))
 Throws {Read-ControlFlowContract $p} 'phase dependency cycle rejected'
-$v.Remove('phases');$v.risks=@(@{id='R1';impact='HIGH';resolved=$false;text='Danger'});File $r 'plans/artifacts/test-task/plan.meta.json' ($v|ConvertTo-Json -Depth 20)
+$v.Remove('phases');$v.risks=@(@{id='R1';impact='HIGH';resolved=$false;text='Danger'});[IO.File]::WriteAllText($p,($v|ConvertTo-Json -Depth 20))
 Throws {Read-ControlFlowContract $p} 'unresolved high risk requires LARGE'
-$v.tier='LARGE';File $r 'plans/artifacts/test-task/plan.meta.json' ($v|ConvertTo-Json -Depth 20)
+$v.tier='LARGE';[IO.File]::WriteAllText($p,($v|ConvertTo-Json -Depth 20))
 Assert ((Read-ControlFlowContract $p).contract.tier -eq 'LARGE') 'large high risk contract accepted'
-$v.unknown='bad';File $r 'plans/artifacts/test-task/plan.meta.json' ($v|ConvertTo-Json -Depth 20)
+$v.unknown='bad';[IO.File]::WriteAllText($p,($v|ConvertTo-Json -Depth 20))
 Throws {Read-ControlFlowContract $p} 'unknown field rejected'
 Write-Output "contract-v3: $script:Count assertions passed"
-}finally{Remove-Item -LiteralPath $r -Recurse -Force}
+}finally{RemoveFixture $r}
 # Migration must retain HIGH risks and never guess criterion coverage.
 $r=NewFixture
 try {
@@ -84,5 +84,5 @@ Throws {Read-ControlFlowContract $source -AllowV2} 'legacy schema is validated b
 $out=& (Join-Path $script:CoreRoot 'scripts/migrate-contract.ps1') -Path $source -OutputPath (Join-Path $r 'invalid.json') -TaskId migration-test
 Assert ($LASTEXITCODE -eq 2 -and -not (Test-Path (Join-Path $r 'invalid.json'))) 'invalid migration leaves no published copy'
 Write-Output "contract-v3 migration total: $script:Count assertions passed"
-}finally{if($r -and [IO.Path]::GetFileName($r).StartsWith('cf-core-')){Remove-Item -LiteralPath $r -Recurse -Force}}
+}finally{if($r -and [IO.Path]::GetFileName($r).StartsWith('cf-core-')){RemoveFixture $r}}
 $global:LASTEXITCODE=0

@@ -19,7 +19,7 @@ blocked by actual native SDK ambient isolation; do not claim release readiness.
 - Source digest: effective contents/types/modes/deletions vs immutable initial baseline, not HEAD/staging/timestamps. Stage/commit identical content preserves evidence. Incomplete Git -> ERROR/UNVERIFIABLE/BLOCKED.
 - Deterministic single-check capture via native tools records command/cwd/exit/output hash and before/after digest. Ledger checks provenance/freshness/coverage, not truth of LLM PROVEN.
 - Immutable evidence/output revisions; state.json sole atomic publication point, OS-held exclusive lock. Crash sees coherent old/new state; corrupt/missing references -> UNVERIFIABLE.
-- Artifact directory plans/artifacts/<task_id>/plan.meta.json and runs/<run_id>. Session active marker under plans/artifacts/.controlflow/active/<session-hash>.json. Bind physical worktree + individual Git dir + trusted native session + task + run. No v2/foreign adoption or guessed session.
+- Runtime artifacts use the dedicated external state root resolved by get-storage-paths.ps1. Contracts, runs and active markers are separated by physical worktree/Git identity and session; no project bookkeeping directory. Bind trusted native session + task + run. No v2/foreign adoption or guessed session.
 - Gate JSON PASS|FAIL|ERROR exits 0|1|2. Commit gate verifies deliverability/ownership; completion adds actual SHA/tree only for required commit.
 - Stop lawful clarification/needed denied permission/cancel/Plan Mode/BLOCKED != DONE. Structured reason/evidence. Third identical no-progress signature or sixth attempt -> BLOCKED. Interrupt never auto-resumes.
 - Missing/untrusted hooks -> explicit fallback and accurate weaker guarantee. Minimal Stop/resume/interrupt adapters, no transcript parser.

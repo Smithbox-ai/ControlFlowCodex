@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Move contracts, evidence, locks and active markers outside Git projects into
+  `CODEX_HOME/controlflow`, with an optional external `CONTROLFLOW_STATE_ROOT`.
+  Preserve worktree/session binding and fail explicitly on unavailable storage;
+  never fall back to project folders or add ignore rules. Old runs remain audit
+  data and require a reviewed contract and fresh evidence for a new external run.
+
 - Preserve literal Unix backslashes in Git source fingerprints and test fixtures.
   macOS CI uses the runner's temporary directory while retaining installer
   rejection of linked/reparse paths.

@@ -36,7 +36,10 @@ $readme = Read-Skill "README.md"
 
 # --- plan skill: compact durable contract ---
 Assert-Contains $plan 'after native `/plan`' 'plan positions after native /plan'
-Assert-Contains $plan "plans/artifacts/<task-slug>/plan.meta.json" "plan metadata artifact"
+Assert-Contains $plan "get-storage-paths.ps1" "canonical external plan location"
+Assert-Contains $execution "get-storage-paths.ps1" "external storage setup"
+Assert-Contains $readme "CONTROLFLOW_STATE_ROOT" "external storage configuration"
+foreach($guidance in @($plan,$verify,$review,$execution)) { Assert-NotContains $guidance 'plans/artifacts' 'project bookkeeping path' }
 Assert-Contains $plan "schema_version: 3.0.0" "plan v3 schema version"
 Assert-Contains $plan "baseline" "plan baseline field"
 Assert-Contains $plan "dirty_paths" "plan dirty_paths field"
