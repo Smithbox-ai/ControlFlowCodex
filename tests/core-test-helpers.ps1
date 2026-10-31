@@ -15,7 +15,10 @@ function New-HistoricalV3RunFixture {
     param([string]$RepoRoot,[string]$ContractPath,[string]$SessionId,[switch]$ManualFallback)
     # Arrange historical data only. This is not a production legacy-start switch,
     # and never constructs a V4 approval or changes the public creation API.
-    & (Get-Module ControlFlow.Core) {
+    $expectedModulePath=[IO.Path]::GetFullPath((Join-Path $script:CoreRoot 'scripts/ControlFlow.Core.psm1'))
+    $fixtureModules=@(Get-Module ControlFlow.Core|Where-Object{$_.Path -and [IO.Path]::GetFullPath($_.Path) -ceq $expectedModulePath})
+    if($fixtureModules.Count -ne 1){throw 'HISTORICAL_FIXTURE_REQUIRES_EXACT_CORE_MODULE'}
+    & $fixtureModules[0] {
         param($RepoRoot,$ContractPath,$SessionId,$ManualFallback)
         if(-not $SessionId -and -not $ManualFallback){throw 'TRUSTED_SESSION_REQUIRED'}
         $identity=Get-CFIdentity $RepoRoot;$RepoRoot=$identity.worktree_realpath

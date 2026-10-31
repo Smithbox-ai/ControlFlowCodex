@@ -15,7 +15,12 @@ try {
  Throws {Start-ControlFlowRun $r $p 'legacy-boundary'} 'NewRunV3RejectedWithoutStorageMutation'
  $after=@(Get-ChildItem -LiteralPath $paths.worktree_path -Recurse -File|ForEach-Object{[IO.Path]::GetRelativePath($paths.worktree_path,$_.FullName)+':'+(Get-FileHash $_.FullName).Hash}|Sort-Object)
  Assert (($before-join'|') -ceq ($after-join'|') -and -not(Test-Path $paths.active_path)) 'RejectedV3CreatesNoStateRunOrPointer'
- $old=New-HistoricalV3RunFixture $r $p 'legacy-boundary'
+ $shadow=New-Module -Name ControlFlow.Core -ScriptBlock {}
+ Import-Module $shadow
+ try {
+  Assert (@(Get-Module ControlFlow.Core).Count -gt 1) 'HistoricalFixtureRegressionLoadsDuplicateModuleNames'
+  $old=New-HistoricalV3RunFixture $r $p 'legacy-boundary'
+ } finally {Remove-Module -ModuleInfo $shadow -Force}
  $read=Read-ControlFlowRun $r $old.run_path
  Assert ($read.legacy_semantics -and $read.state.schema_version -ceq '3.0.0') 'HistoricalV3RunPreservesVersionAndSemantics'
  $gate=Test-ControlFlowGate $r $old.run_path Completion
