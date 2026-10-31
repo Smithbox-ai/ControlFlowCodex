@@ -1,3 +1,4 @@
+#requires -Version 7.4
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $script:PathComparison = if ($IsWindows) { [StringComparison]::OrdinalIgnoreCase } else { [StringComparison]::Ordinal }

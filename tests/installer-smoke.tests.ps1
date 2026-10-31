@@ -120,13 +120,13 @@ try {
     Assert-Path (Join-Path $plug "skills/controlflow-plan/SKILL.md") "plan skill"
     Assert-Path (Join-Path $plug "skills/controlflow-verify/SKILL.md") "verify skill"
     Assert-Path (Join-Path $plug "skills/controlflow-review/SKILL.md") "review skill"
-    Assert-Path (Join-Path $plug "skills/controlflow/SKILL.md") "v3 entry skill"
-    Assert-Path (Join-Path $plug "scripts/validate-contract.ps1") "v3 validator script"
-    Assert-Path (Join-Path $plug "scripts/completion-gate.ps1") "v3 completion gate"
+    Assert-Path (Join-Path $plug "skills/controlflow/SKILL.md") "V4 entry skill"
+    Assert-Path (Join-Path $plug "scripts/validate-contract.ps1") "V4 validator script"
+    Assert-Path (Join-Path $plug "scripts/completion-gate.ps1") "V4 completion gate"
     Assert-Path (Join-Path $plug "scripts/install.ps1") "installer script"
-    Assert-Path (Join-Path $plug "plans/templates/plan.meta.v3.json") "v3 nested template"
-    Assert-Path (Join-Path $plug "plans/examples/small-v3.meta.json") "v3 SMALL example"
-    Assert-Path (Join-Path $plug "evals/e2e-fixtures.ps1") "v3 executable eval fixtures"
+    Assert-Path (Join-Path $plug "plans/templates/plan.meta.v4.json") "V4 nested template"
+    Assert-Path (Join-Path $plug "plans/examples/small-v4.meta.json") "V4 draft example"
+    Assert-Path (Join-Path $plug "evals/e2e-fixtures.ps1") "deterministic eval fixtures"
     Assert-Path (Join-Path $plug "README.md") "README"
     Assert-Path (Join-Path $plug "LICENSE") "LICENSE"
 
@@ -199,7 +199,7 @@ try {
     }
 
     Assert-Path (Join-Path $plug 'plugin.json') 'portable manifest'
-    Assert-Path (Join-Path $plug 'plans/examples/small-v3.meta.json') 'v3 example metadata'
+    Assert-Path (Join-Path $plug 'plans/examples/small-v4.meta.json') 'V4 example metadata'
     $obsolete=(Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/package-inventory.json') -Raw|ConvertFrom-Json).obsolete
     foreach($relative in $obsolete){Assert-PathAbsent (Join-Path $plug $relative) "obsolete v2 path $relative"}
 
@@ -240,7 +240,7 @@ try {
     $reinstall = Invoke-Installer $tempHome -Force
     if ($reinstall.ExitCode -ne 0) { throw "Reinstall failed: $($reinstall.Output -join [Environment]::NewLine)" }
     Assert-PathAbsent $stale "stale orphan (post-reinstall)"
-    Assert-Path (Join-Path $plug "scripts/validate-contract.ps1") "v3 validator after reinstall"
+    Assert-Path (Join-Path $plug "scripts/validate-contract.ps1") "V4 validator after reinstall"
     foreach($relative in $obsolete){Assert-PathAbsent (Join-Path $plug $relative) "obsolete v2 path after reinstall $relative"}
 
     # Installing over an existing target without -Force must refuse.

@@ -9,6 +9,10 @@ function Capture($Events){return @{stdout=(@($Events|ForEach-Object {$_|ConvertT
 $id='11111111-1111-7111-8111-111111111111'
 $events=@(@{type='thread.started';thread_id=$id},@{type='turn.started'},@{type='item.completed';item=@{id='i0';type='agent_message';text='done'}},@{type='turn.completed';usage=@{input_tokens=20;cached_input_tokens=5;output_tokens=3}})
 try {
+ $defaultReady=Get-E2EProtocolReadiness @{Variant='v4'}
+ Assert ($defaultReady.collector -ceq 'stdout-jsonl' -and -not $defaultReady.may_launch) 'V4ProtocolDefaultsToStdoutOnlyAndBlocks'
+ Throws {Get-E2EProtocolReadiness @{Variant='v3';Collector='stdout-jsonl'}} 'RetiredV3TreatmentRejected'
+ Throws {Get-E2EProtocolReadiness @{Variant='native';Collector='legacy-rollout'}} 'RetiredCollectorCannotEnableNativeArm'
  Assert ([bool](Get-Command Get-E2ECollectedUsage -ErrorAction SilentlyContinue)) 'CollectorSeparationRequired'
  $capture=Capture $events
  $u=Get-E2ECollectedUsage -Collector stdout-jsonl -Capture $capture
@@ -47,14 +51,14 @@ try {
  $upper=Clone $n;$upper.Collector='STDOUT-JSONL';$upper.Variant='NATIVE'
  Assert ((Invoke-E2ETrial $case $upper (Join-Path $temp 'uppercase-blocked')).protocol_blocked_before_generation) 'ApiCasingCannotBypassProtocolGate'
  $legacy=@{Variant='v3';Collector='legacy-rollout'}
- Assert ((Get-E2EProtocolReadiness -Config $legacy).collector -ceq 'legacy-rollout') 'LegacyCollectorRemainsSeparate'
+ Throws {Get-E2EProtocolReadiness -Config $legacy} 'RetiredTreatmentAndCollectorRejected'
  Throws {Get-E2EProtocolReadiness @{Variant='v5';Collector='legacy-rollout'}} 'UnknownTreatmentRejected'
  Throws {Get-E2EProtocolReadiness @{Variant='v4';Collector='legacy-rollout'}} 'V4CannotFallBackToSessionCollector'
  LoadCore
  $r=NewFixture
  try {
   $t=New-E2EV4Treatment -Case $case -FixtureRoot $r -TrialDirectory (Join-Path $temp 'treatment') -PluginRoot $script:CoreRoot
-  Assert ($t.environment.CONTROLFLOW_STATE_ROOT -ceq $t.binding.state_root -and $t.prompt -match '4.0.0' -and $t.prompt -match 'manual' -and $t.binding.task_id -match '^eval-') 'ActualV4TreatmentHasBoundExternalStateAndExplicitOptIn'
+  Assert ($t.environment.CONTROLFLOW_STATE_ROOT -ceq $t.binding.state_root -and $t.prompt -match '4.0.0' -and $t.prompt -match 'manual' -and $t.binding.task_id -match '^eval-') 'ActualV4TreatmentHasBoundExternalStateAndDefaultWorkflow'
   Assert (@($t.environment.Keys|Where-Object {$_ -in @('HOME','USERPROFILE','CODEX_HOME')}).Count -eq 0) 'TreatmentDoesNotOverrideIdentity'
   Throws {New-E2EV4Treatment -Case $case -FixtureRoot $r -TrialDirectory (Join-Path $temp 'treatment') -PluginRoot $script:CoreRoot} 'TreatmentCannotReuseEvidenceDirectory'
   $env:CONTROLFLOW_STATE_ROOT=$t.binding.state_root

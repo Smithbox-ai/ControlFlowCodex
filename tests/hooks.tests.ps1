@@ -24,8 +24,8 @@ try {
     Assert ((Hook $r 'unmanaged').Count -eq 0) 'No active v3 run leaves native session unmanaged'
     File $r 'plans/old-plan.md' 'V2 plan with arbitrary prose DONE'
     Assert ((Hook $r 'unmanaged').Count -eq 0) 'V2 prose cannot activate v3 Stop'
-    $p=Contract $r -SessionId 'session-a'
-    $run=Start-ControlFlowRun $r $p 'session-a'
+    $p=LegacyContract $r -SessionId 'session-a'
+    $run=New-HistoricalV3RunFixture $r $p 'session-a'
     Assert ((Hook $r 'session-b').Count -eq 0) 'Foreign session never adopts another run'
     [IO.Directory]::CreateDirectory((Join-Path $r 'subdir'))|Out-Null
     $decision=Hook (Join-Path $r 'subdir') 'session-a'

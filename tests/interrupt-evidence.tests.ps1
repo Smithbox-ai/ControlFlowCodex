@@ -2,7 +2,7 @@
 LoadCore
 $r=NewFixture
 try {
-$p=Contract $r -SessionId 'interrupt-busy';$run=Start-ControlFlowRun $r $p 'interrupt-busy';$path=$run.run_path
+$p=LegacyContract $r -SessionId 'interrupt-busy';$run=New-HistoricalV3RunFixture $r $p 'interrupt-busy';$path=$run.run_path
 $lock=[IO.File]::Open((Join-Path $path 'writer.lock'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
 try{
 $watch=[Diagnostics.Stopwatch]::StartNew();$interrupt=Request-ControlFlowInterrupt $r 'interrupt-busy' -TurnId 'native-turn-1';$watch.Stop()
@@ -37,8 +37,8 @@ Write-Output "interrupt-evidence busy/ack: $script:Count assertions passed"
 }finally{if($r -and [IO.Path]::GetFileName($r).StartsWith('cf-core-')){RemoveFixture $r}}
 $r=NewFixture
 try {
-$p=Contract $r 'SMALL' 'none' "[IO.File]::WriteAllText('capture.started','yes'); Start-Sleep -Seconds 3; Write-Output 'finished'" -SessionId 'interrupt-capture'
-$run=Start-ControlFlowRun $r $p 'interrupt-capture';$path=$run.run_path
+$p=LegacyContract $r 'SMALL' 'none' "[IO.File]::WriteAllText('capture.started','yes'); Start-Sleep -Seconds 3; Write-Output 'finished'" -SessionId 'interrupt-capture'
+$run=New-HistoricalV3RunFixture $r $p 'interrupt-capture';$path=$run.run_path
 $info=[Diagnostics.ProcessStartInfo]::new();$info.FileName=Join-Path $PSHOME $(if($IsWindows){'pwsh.exe'}else{'pwsh'});$info.UseShellExecute=$false;$info.RedirectStandardOutput=$true;$info.RedirectStandardError=$true;$info.CreateNoWindow=$true
 foreach($a in @('-NoProfile','-File',"$PSScriptRoot/core-child.ps1",'-RepoRoot',$r,'-RunPath',$path,'-Action','capture')){$info.ArgumentList.Add($a)}
 $child=[Diagnostics.Process]::new();$child.StartInfo=$info;[void]$child.Start()
@@ -59,7 +59,7 @@ Write-Output "interrupt-evidence actual capture: $script:Count assertions passed
 }finally{if($r -and [IO.Path]::GetFileName($r).StartsWith('cf-core-')){RemoveFixture $r}}
 $r=NewFixture
 try {
-$p=Contract $r 'SMALL' 'none' "[Console]::Out.Write(('x' * 16777216))" -SessionId 'interrupt-large';$run=Start-ControlFlowRun $r $p 'interrupt-large';$path=$run.run_path
+$p=LegacyContract $r 'SMALL' 'none' "[Console]::Out.Write(('x' * 16777216))" -SessionId 'interrupt-large';$run=New-HistoricalV3RunFixture $r $p 'interrupt-large';$path=$run.run_path
 $capture=Capture-ControlFlowCheck $r $path 'check-1'
 Assert ((Get-Item (Join-Path $path $capture.stdout_ref.path)).Length -ge 16777216) 'real large command output exists'
 $stream=[IO.File]::Open((Join-Path $path $capture.stdout_ref.path),[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)

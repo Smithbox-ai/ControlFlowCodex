@@ -30,8 +30,9 @@ Invoke-ContractScript "template-contract.tests.ps1"
 Invoke-ContractScript "installer-smoke.tests.ps1"
 Invoke-ContractScript "git-evidence.tests.ps1"
 Invoke-ContractScript "storage.tests.ps1"
-Invoke-ContractScript "contract-v3.tests.ps1"
+Invoke-ContractScript "legacy-contract-compat.tests.ps1"
 Invoke-ContractScript "contract-v4.tests.ps1"
+Invoke-ContractScript "v4-release.tests.ps1"
 Invoke-ContractScript "phase-gates.tests.ps1"
 Invoke-ContractScript "decisions-v4.tests.ps1"
 Invoke-ContractScript "v4-integrity.tests.ps1"
@@ -59,7 +60,7 @@ Invoke-ContractScript "e2e-review-metrics.tests.ps1"
 Invoke-ContractScript "e2e-v4-adapter.tests.ps1"
 Invoke-ContractScript "e2e-v4-cli.tests.ps1"
 Invoke-ContractScript "e2e-release-grading.tests.ps1"
-Invoke-ContractScript "e2e-cache.tests.ps1"
+
 
 if ($UsePester) {
     $invokePester = Get-Command Invoke-Pester -ErrorAction SilentlyContinue

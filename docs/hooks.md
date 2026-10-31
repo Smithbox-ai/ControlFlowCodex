@@ -6,12 +6,15 @@ uses the supported `.codex-plugin/plugin.json` loader path and bounds recursive
 skill/MCP discovery. It does not grant hook trust. Exact native review/trust and
 real callback smoke are still required; discovery alone is not callback PASS.
 
-The supported adapter is a local PowerShell 7 command hook. Its definition is
+The supported adapter is a local PowerShell 7.4 or newer command hook;
+7.6.9 is the tested version. Its definition is
 `hooks/hooks.json`; command paths derive from the native `PLUGIN_ROOT` environment.
 It consumes JSON on stdin and emits one JSON object on stdout. It does not parse
 session transcripts or intercept commit command text.
 
-Native callback `session_id` and `cwd` select an already active v3 run. An absent
+Native callback `session_id` and `cwd` select an already active V4 run or an
+existing V3 run with matching runtime and contract versions. Existing V3 runs
+remain visibly `legacy_semantics`; a callback never creates a new legacy run. An absent
 marker leaves the session unmanaged. A corrupt marker, invalid reference, wrong
 binding, or missing identity is UNVERIFIABLE. No older v2 plan is adopted and no
 foreign session is updated.

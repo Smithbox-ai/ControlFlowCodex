@@ -101,8 +101,8 @@ $r=NewFixture
 $pidFile=Join-Path ([IO.Path]::GetTempPath()) ('cf-child-'+[guid]::NewGuid().ToString('N')+'.pid')
 $marker=$null
 try {
-    $p=Contract $r 'SMALL' 'none' '[Console]::Out.WriteLine("capture-out"); [Console]::Error.WriteLine("capture-error")' 'capture-streams'
-    $run=Start-ControlFlowRun $r $p 'capture-streams'
+    $p=LegacyContract $r 'SMALL' 'none' '[Console]::Out.WriteLine("capture-out"); [Console]::Error.WriteLine("capture-error")' 'capture-streams'
+    $run=New-HistoricalV3RunFixture $r $p 'capture-streams'
     for($i=0;$i -lt 6;$i++){
         $capture=Capture-ControlFlowCheck $r $run.run_path 'check-1'
         $out=[Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes((Join-Path $run.run_path $capture.stdout_ref.path))).Trim()
@@ -116,10 +116,10 @@ $child=[Diagnostics.Process]::Start($p);[IO.File]::WriteAllText($args[0],[string
 '@
     File $r 'spawn-child.ps1' $spawn
     $command="& ./spawn-child.ps1 '"+$pidFile.Replace("'","''")+"'"
-    $p=Contract $r 'SMALL' 'none' $command 'inherited-output'
+    $p=LegacyContract $r 'SMALL' 'none' $command 'inherited-output'
     $c=Get-Content $p -Raw | ConvertFrom-Json -AsHashtable;$c.checks[0].timeout_seconds=5
     [IO.File]::WriteAllText($p,($c | ConvertTo-Json -Depth 20))
-    $run=Start-ControlFlowRun $r $p 'inherited-output'
+    $run=New-HistoricalV3RunFixture $r $p 'inherited-output'
     $clock=[Diagnostics.Stopwatch]::StartNew();$capture=Capture-ControlFlowCheck $r $run.run_path 'check-1';$clock.Stop()
     Assert ((($capture.status -eq 'TIMEOUT' -and $capture.timed_out) -or ($capture.status -eq 'FAIL' -and $capture.process_incomplete)) -and $clock.Elapsed.TotalSeconds -lt 8) 'unfinished inherited stream never passes or exceeds deadline'
     $childId=[int][IO.File]::ReadAllText($pidFile)
@@ -135,8 +135,8 @@ $child=Start-Process -FilePath (Get-Command pwsh).Source -ArgumentList @('-NoPro
     File $r 'spawn-silent.ps1' $silent
     $marker=$pidFile+'.failure'
     $command="& ./spawn-silent.ps1 '"+$pidFile.Replace("'","''")+"' '"+$marker.Replace("'","''")+"'"
-    $p=Contract $r 'SMALL' 'none' $command 'silent-child'
-    $run=Start-ControlFlowRun $r $p 'silent-child'
+    $p=LegacyContract $r 'SMALL' 'none' $command 'silent-child'
+    $run=New-HistoricalV3RunFixture $r $p 'silent-child'
     $clock=[Diagnostics.Stopwatch]::StartNew();$capture=Capture-ControlFlowCheck $r $run.run_path 'check-1';$clock.Stop()
     $childId=[int][IO.File]::ReadAllText($pidFile)
     $childAlive=$null -ne (Get-Process -Id $childId -ErrorAction SilentlyContinue)

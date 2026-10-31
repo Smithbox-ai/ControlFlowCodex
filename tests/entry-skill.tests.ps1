@@ -1,11 +1,11 @@
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
 $entry=Join-Path $root 'skills/controlflow/SKILL.md'
-if(-not (Test-Path -LiteralPath $entry)){throw 'Missing explicit v3 entry skill'}
+if(-not (Test-Path -LiteralPath $entry)){throw 'Missing current entry skill'}
 $text=Get-Content -LiteralPath $entry -Raw
 $words=@($text -split '\s+'|Where-Object {$_}).Count
 if($words -gt 250){throw "Entry exceeds progressive disclosure budget: $words words"}
-foreach($needle in @('TRIVIAL','SMALL','MEDIUM','LARGE','HIGH','commit','one writer','ManualFallback','BLOCKED','execution.md')) {
+foreach($needle in @('V4','light','SMALL','MEDIUM','LARGE','HIGH','commit','one writer','ManualFallback','BLOCKED','execution.md')) {
     if($text -notmatch [regex]::Escape($needle)){throw "Entry lacks required behavior: $needle"}
 }
 $yaml=Get-Content -LiteralPath (Join-Path $root 'skills/controlflow/agents/openai.yaml') -Raw
@@ -35,5 +35,5 @@ $hook=Get-Content -LiteralPath (Join-Path $root 'hooks/hooks.json') -Raw|Convert
 foreach($event in @('Stop','SessionStart','Interrupt')){
     if(-not $hook.hooks.ContainsKey($event)){throw "Missing native adapter: $event"}
 }
-if($hook.hooks.ContainsKey('PreToolUse')){throw 'No custom commit parser or runtime interceptor belongs in v3'}
-Write-Output "VALID explicit v3 entry, native progress/fallback policy and progressive references: $words entry words"
+if($hook.hooks.ContainsKey('PreToolUse')){throw 'No custom commit parser or runtime interceptor belongs in ControlFlow'}
+Write-Output "VALID explicit V4 entry, native progress/fallback policy and progressive references: $words entry words"

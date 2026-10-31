@@ -1,6 +1,6 @@
 . "$PSScriptRoot/core-test-helpers.ps1"
 function V4Contract($Root,[string]$Status='draft',[string]$Session='') {
- $p=Contract $Root -SessionId $Session
+ $p=(Get-ControlFlowStoragePaths $Root 'test-task' $Session -Create).contract_path
  $v=Get-Content "$script:CoreRoot/plans/templates/plan.meta.v4.json" -Raw|ConvertFrom-Json -AsHashtable
  $v.task_id='test-task';$v.baseline.commit=Git $Root @('rev-parse','HEAD');$v.scope=@('owned.txt')
  $v.contract_status=$Status;$v.domain=@{classification='supporting';rationale='Bounded fixture';refs=@('owned.txt')}

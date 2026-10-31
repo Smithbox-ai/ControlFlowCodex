@@ -1,6 +1,6 @@
 function Assert-CFMigrationInput {
     param([object]$Contract)
-    # This validates imported data for the v3 converter, not an executable legacy
+    # This validates imported data for the V4 converter, not an executable legacy
     # contract. It has no dependency on an installed legacy runtime or schema.
     function Assert-CFMigrationObject($Value,[string[]]$Required,[string[]]$Optional=@()) {
         if($Value -isnot [Collections.IDictionary]){throw 'INVALID_MIGRATION_INPUT: object required'}
@@ -62,7 +62,7 @@ function Read-ControlFlowContract {
         return @{contract=$contract;digest=(Get-CFHash $bytes);legacy=$true}
     }
     if($contract.schema_version -cnotin @('3.0.0','4.0.0')){throw 'UNSUPPORTED_CONTRACT_VERSION'}
-    $schema=Join-Path $script:CoreModuleRoot ('../schemas/plan-meta-v'+$contract.schema_version.Substring(0,1)+'.schema.json')
+    $schema=Join-Path $script:CoreModuleRoot $(if($contract.schema_version -ceq '3.0.0'){'../schemas/compat/plan-meta-v3.schema.json'}else{'../schemas/plan-meta-v4.schema.json'})
     if(-not (Test-Json -Json $text -SchemaFile $schema -ErrorAction Stop)){throw 'INVALID_CONTRACT_SCHEMA'}
     $all=Get-CFMap;$criteria=Get-CFMap
     foreach($kind in @('criteria','checks','phases','risks','assumptions')) {
@@ -90,17 +90,14 @@ function Read-ControlFlowContract {
     }
     foreach($glob in $contract.scope){if([IO.Path]::IsPathRooted($glob) -or $glob.Split('/') -contains '..' -or $glob.Contains('\')){throw 'INVALID_SCOPE_PATH'}}
     if($contract.schema_version -ceq '4.0.0'){Assert-CFV4Contract $contract}
-    return @{contract=$contract;digest=(Get-CFHash $bytes);legacy=$false}
+    return @{contract=$contract;digest=(Get-CFHash $bytes);legacy=($contract.schema_version -ceq '3.0.0');compatibility=$(if($contract.schema_version -ceq '3.0.0'){'migration-or-existing-run-only'}else{'current'})}
 }
 function Get-ControlFlowClassification {
-    param([int]$ChangedFiles=0,[switch]$BehaviorChange,[switch]$HighRisk,[switch]$CrossBoundary,[switch]$ProductQuestion,[ValidateSet('3.0.0','4.0.0')][string]$SchemaVersion='3.0.0',[ValidateSet('feature','bugfix','refactor','docs')][string]$WorkType='feature',[ValidateSet('core','supporting','generic','unknown')][string]$Domain='unknown')
+    param([int]$ChangedFiles=0,[switch]$BehaviorChange,[switch]$HighRisk,[switch]$CrossBoundary,[switch]$ProductQuestion,[ValidateSet('4.0.0')][string]$SchemaVersion='4.0.0',[ValidateSet('feature','bugfix','refactor','docs')][string]$WorkType='feature',[ValidateSet('core','supporting','generic','unknown')][string]$Domain='unknown')
     $tier=if($HighRisk){'LARGE'}elseif($CrossBoundary -or $ProductQuestion -or $ChangedFiles -gt 5){'MEDIUM'}elseif($BehaviorChange -or $ChangedFiles -gt 1){'SMALL'}else{'TRIVIAL'}
-    if($SchemaVersion -ceq '4.0.0'){
-        $human=$HighRisk -or $CrossBoundary -or $ProductQuestion -or $Domain -in @('core','unknown')
-        $profile=if($tier -eq 'TRIVIAL' -and -not $human -and $WorkType -eq 'docs'){'light'}else{$WorkType}
-        return @{schema_version=$SchemaVersion;tier=$(if($tier -ceq 'TRIVIAL'){'SMALL'}else{$tier});workflow=@{profile=$profile;required_artifacts=@(Get-CFWorkflowKinds $profile)};review_policy=@{human_design=[bool]($human -or $WorkType -eq 'feature');human_final=[bool]$human}}
-    }
-    return @{schema_version='3.0.0';tier=$tier;signals=@{changed_files=$ChangedFiles;behavior_change=[bool]$BehaviorChange;high_risk=[bool]$HighRisk;cross_boundary=[bool]$CrossBoundary;product_question=[bool]$ProductQuestion}}
+    $human=$HighRisk -or $CrossBoundary -or $ProductQuestion -or $Domain -in @('core','unknown')
+    $profile=if($tier -eq 'TRIVIAL' -and -not $human -and $WorkType -eq 'docs'){'light'}else{$WorkType}
+    return @{schema_version=$SchemaVersion;tier=$(if($tier -ceq 'TRIVIAL'){'SMALL'}else{$tier});workflow=@{profile=$profile;required_artifacts=@(Get-CFWorkflowKinds $profile)};review_policy=@{human_design=[bool]($human -or $WorkType -eq 'feature');human_final=[bool]$human}}
 }
 function Get-CFWorkflowKinds([string]$Profile) {
     switch -CaseSensitive($Profile){

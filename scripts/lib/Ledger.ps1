@@ -34,6 +34,7 @@ function Start-ControlFlowRun {
     if(-not $SessionId -and -not $ManualFallback){throw 'TRUSTED_SESSION_REQUIRED'}
     $identity=Get-CFIdentity $RepoRoot;$RepoRoot=$identity.worktree_realpath
     $read=Read-ControlFlowContract $ContractPath;$contract=$read.contract
+    if($contract.schema_version -cne '4.0.0'){throw 'NEW_RUN_REQUIRES_V4: migrate the legacy contract to a fresh V4 draft; existing runs are unchanged'}
     $paths=Get-ControlFlowStoragePaths $RepoRoot $contract.task_id $SessionId
     $canonical=$paths.contract_path
     if([IO.Path]::GetFullPath($ContractPath) -cne [IO.Path]::GetFullPath($canonical)){throw 'CONTRACT_PATH_BINDING_MISMATCH'}
@@ -77,7 +78,7 @@ function Read-ControlFlowRun {
         $state.status='INTERRUPTED'
         $state.structured_reason=@{reason='INTERRUPT';evidence='NATIVE_PENDING_INTERRUPT';interrupt_id=$pending.interrupt_id;native_evidence=$pending.native_evidence}
     }
-    return @{state=$state;evidence=$evidence;initial_snapshot=$initial;run_path=$RunPath;pending_interrupt=$pending}
+    return @{state=$state;evidence=$evidence;initial_snapshot=$initial;run_path=$RunPath;pending_interrupt=$pending;legacy_semantics=($state.schema_version -ceq '3.0.0')}
 }
 function Get-ControlFlowActiveRun {
     param([Parameter(Mandatory)][string]$RepoRoot,[Parameter(Mandatory)][string]$SessionId)

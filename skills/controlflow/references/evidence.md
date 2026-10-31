@@ -39,7 +39,9 @@ missing references and incomplete Git observations are UNVERIFIABLE.
 The deterministic ledger checks provenance, freshness, and coverage links. It
 does not prove the semantic truth of `PROVEN`, the suitability of a command, or
 an LLM's review. Keep observed evidence separate from hypotheses. A criterion
-without suitable executable evidence remains a gap; do not manufacture PASS.
+requiring code evidence without a suitable executable check remains a gap.
+Human-only V4 criteria use the required bound decision, not a dummy command.
+Every declared judge remains required; do not manufacture PASS.
 
 Never edit state.json or immutable captures to repair a gate. Use supported
 events and new captures. The OS-held writer lock and expected revision reject

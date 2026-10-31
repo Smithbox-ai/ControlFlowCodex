@@ -2,8 +2,8 @@
 LoadCore
 $r=NewFixture
 try {
-$p=Contract $r -SessionId 'native-session'
-$run=Start-ControlFlowRun -RepoRoot $r -ContractPath $p -SessionId 'native-session'
+$p=LegacyContract $r -SessionId 'native-session'
+$run=New-HistoricalV3RunFixture -RepoRoot $r -ContractPath $p -SessionId 'native-session'
 $path=$run.run_path
 $read=Read-ControlFlowRun -RepoRoot $r -RunPath $path -SessionId 'native-session'
 Assert ($read.state.revision -eq 0) 'initial immutable state revision'
@@ -35,10 +35,10 @@ Write-Output "run-evidence: $script:Count assertions passed"
 }finally{if($r -and [IO.Path]::GetFileName($r).StartsWith('cf-core-')){RemoveFixture $r}}
 $r=NewFixture
 try{
-$p=Contract $r 'SMALL' 'none' 'Write-Error failure; exit 7' -SessionId 'failure-session'
-$run=Start-ControlFlowRun $r $p 'failure-session'
+$p=LegacyContract $r 'SMALL' 'none' 'Write-Error failure; exit 7' -SessionId 'failure-session'
+$run=New-HistoricalV3RunFixture $r $p 'failure-session'
 $c=Capture-ControlFlowCheck $r $run.run_path 'check-1';Assert ($c.status -eq 'FAIL' -and $c.exit_code -eq 7) 'failure capture records actual exit'
-$p=Contract $r 'SMALL' 'none' "[IO.File]::WriteAllText('owned.txt','changed')" -SessionId 'failure-session'
+$p=LegacyContract $r 'SMALL' 'none' "[IO.File]::WriteAllText('owned.txt','changed')" -SessionId 'failure-session'
 $c=Capture-ControlFlowCheck $r $run.run_path 'check-1';Assert ($c.status -eq 'STALE') 'check that mutates source never PASS'
 Write-Output "run-evidence total: $script:Count assertions passed"
 }finally{if($r -and [IO.Path]::GetFileName($r).StartsWith('cf-core-')){RemoveFixture $r}}
@@ -49,7 +49,7 @@ $p=[Diagnostics.Process]::new();$p.StartInfo=$info;[void]$p.Start();return $p
 }
 $r=NewFixture
 try {
-$p=Contract $r -SessionId 'race';$run=Start-ControlFlowRun $r $p 'race';$path=$run.run_path
+$p=LegacyContract $r -SessionId 'race';$run=New-HistoricalV3RunFixture $r $p 'race';$path=$run.run_path
 $a=StartFixtureChild $r $path 'update';$b=StartFixtureChild $r $path 'update'
 try{$a.WaitForExit();$b.WaitForExit();Assert (@($a.ExitCode,$b.ExitCode|Where-Object {$_ -eq 0}).Count -eq 1) 'two real child writers cannot both publish revision zero';Assert ((Read-ControlFlowRun $r $path).state.revision -eq 1) 'concurrent state contains exactly one event'}finally{$a.Dispose();$b.Dispose()}
 $statePath=Join-Path $path 'state.json';$old=[IO.File]::ReadAllBytes($statePath)
@@ -70,8 +70,8 @@ Write-Output "run-evidence concurrent/fault total: $script:Count assertions pass
 }finally{if($r -and [IO.Path]::GetFileName($r).StartsWith('cf-core-')){RemoveFixture $r}}
 $r=NewFixture
 try {
-$p=Contract $r 'SMALL' 'none' "[IO.File]::WriteAllText('capture.started','yes'); Start-Sleep -Seconds 60" -SessionId 'crash'
-$run=Start-ControlFlowRun $r $p 'crash';$path=$run.run_path;$child=StartFixtureChild $r $path 'capture'
+$p=LegacyContract $r 'SMALL' 'none' "[IO.File]::WriteAllText('capture.started','yes'); Start-Sleep -Seconds 60" -SessionId 'crash'
+$run=New-HistoricalV3RunFixture $r $p 'crash';$path=$run.run_path;$child=StartFixtureChild $r $path 'capture'
 try{
 $deadline=[DateTime]::UtcNow.AddSeconds(15)
 while(-not (Test-Path (Join-Path $r 'capture.started')) -and [DateTime]::UtcNow -lt $deadline -and -not $child.HasExited){Start-Sleep -Milliseconds 50}
@@ -85,8 +85,8 @@ Write-Output "run-evidence crash total: $script:Count assertions passed"
 }finally{if($r -and [IO.Path]::GetFileName($r).StartsWith('cf-core-')){RemoveFixture $r}}
 $r=NewFixture
 try {
-$p=Contract $r 'SMALL' 'none' 'Start-Sleep -Seconds 5' -SessionId 'timeout';$v=Get-Content $p -Raw|ConvertFrom-Json -AsHashtable;$v.checks[0].timeout_seconds=1;[IO.File]::WriteAllText($p,($v|ConvertTo-Json -Depth 20))
-$run=Start-ControlFlowRun $r $p 'timeout';$capture=Capture-ControlFlowCheck $r $run.run_path 'check-1'
+$p=LegacyContract $r 'SMALL' 'none' 'Start-Sleep -Seconds 5' -SessionId 'timeout';$v=Get-Content $p -Raw|ConvertFrom-Json -AsHashtable;$v.checks[0].timeout_seconds=1;[IO.File]::WriteAllText($p,($v|ConvertTo-Json -Depth 20))
+$run=New-HistoricalV3RunFixture $r $p 'timeout';$capture=Capture-ControlFlowCheck $r $run.run_path 'check-1'
 Assert ($capture.status -eq 'TIMEOUT' -and $capture.timed_out) 'timeout is captured as non-PASS'
 $stream=Join-Path $run.run_path $capture.stdout_ref.path;[IO.File]::WriteAllText($stream,'corrupted output')
 Throws {Read-ControlFlowRun $r $run.run_path} 'output hash corruption blocks read'
@@ -103,7 +103,7 @@ $r=NewFixture
 try {
 $pwsh=Join-Path $PSHOME $(if($IsWindows){'pwsh.exe'}else{'pwsh'})
 $command="& '"+$pwsh.Replace("'","''")+"' -NoProfile -Command 'exit 7'"
-$p=Contract $r 'SMALL' 'none' $command -SessionId 'native-exit';$run=Start-ControlFlowRun $r $p 'native-exit'
+$p=LegacyContract $r 'SMALL' 'none' $command -SessionId 'native-exit';$run=New-HistoricalV3RunFixture $r $p 'native-exit'
 $capture=Capture-ControlFlowCheck $r $run.run_path 'check-1'
 Assert ($capture.status -eq 'FAIL' -and $capture.exit_code -eq 7) 'native child nonzero exit is captured exactly'
 Write-Output "run-evidence native exit total: $script:Count assertions passed"
@@ -118,7 +118,7 @@ Assert (-not (Test-Path (Join-Path $outside 'writer.lock'))) 'invalid external r
 $global:LASTEXITCODE=0
 $r=NewFixture
 try {
-$p=Contract $r -SessionId 'directory-pointer';$run=Start-ControlFlowRun $r $p 'directory-pointer'
+$p=LegacyContract $r -SessionId 'directory-pointer';$run=New-HistoricalV3RunFixture $r $p 'directory-pointer'
 $active=(Get-ControlFlowStoragePaths $r 'test-task' 'directory-pointer').active_path;[IO.File]::Move($active,$active+'.backup');[IO.Directory]::CreateDirectory($active)|Out-Null
 Throws {Get-ControlFlowActiveRun $r 'directory-pointer'} 'directory replacing active pointer is corruption, not absent session'
 Write-Output "run-evidence boundary total: $script:Count assertions passed"

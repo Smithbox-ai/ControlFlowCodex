@@ -69,12 +69,12 @@ function New-CFCandidate([string]$RepoRoot,[string]$RunPath,[string[]]$OwnedPath
 }
 function Test-ControlFlowGate {
     param([Parameter(Mandatory)][string]$RepoRoot,[Parameter(Mandatory)][string]$RunPath,[Parameter(Mandatory)][ValidateSet('Commit','Completion')][string]$Kind,[string]$CommitSha)
-    $result=@{schema_version='3.0.0';kind=$Kind;status='ERROR';reasons=@();run_id=$null;source_digest=$null;contract_hash=$null}
+    $result=@{schema_version='4.0.0';kind=$Kind;status='ERROR';reasons=@();run_id=$null;source_digest=$null;contract_hash=$null;legacy_semantics=$false}
     $lock=$null
     try {
         if($Kind -eq 'Commit'){$lock=Open-CFWriter $RunPath $RepoRoot}
         $read=Read-ControlFlowRun $RepoRoot $RunPath;$s=$read.state;$e=$read.evidence;$initial=$read.initial_snapshot
-        $result.run_id=$s.run_id
+        $result.run_id=$s.run_id;$result.legacy_semantics=($s.schema_version -ceq '3.0.0')
         $c=Read-ControlFlowContract $s.contract_path;$contract=$c.contract;$result.contract_hash=$c.digest;$result.schema_version=$s.schema_version
         $source=Get-CFRunSource $RepoRoot $RunPath $s;$result.source_digest=$source.digest
         $reasons=[Collections.Generic.List[string]]::new()

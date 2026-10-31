@@ -35,8 +35,8 @@ try {
         if ((Get-FileHash -LiteralPath (Join-Path $staging $relative)).Hash -ne (Get-FileHash -LiteralPath (Join-Path $extractedRoot $relative)).Hash) { throw "Extracted bytes differ: $relative" }
     }
     $global:LASTEXITCODE = 0
-    & (Join-Path $extractedRoot 'scripts/validate-contract.ps1') -Path (Join-Path $extractedRoot 'plans/examples/small-v3.meta.json') | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'Extracted package v3 SMALL example validation failed' }
+    & (Join-Path $extractedRoot 'scripts/validate-contract.ps1') -Path (Join-Path $extractedRoot 'plans/examples/small-v4.meta.json') | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Extracted package V4 draft example validation failed' }
     & (Join-Path $extractedRoot 'scripts/install.ps1') -Flavor $Flavor -HomeRoot (Join-Path $tempRoot 'smoke-home') -Force -DryRun | Out-Null
     & (Join-Path $extractedRoot 'scripts/install.ps1') -Flavor $Flavor -HomeRoot (Join-Path $tempRoot 'smoke-home') -Force | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'Extracted package installation failed' }

@@ -6,14 +6,11 @@
     "skills",
     "schemas",
     "scripts",
-    "plans/templates/plan.meta.v3.json",
-    "plans/examples/small-v3.meta.json",
     "tests",
     "evals",
     "README.md",
     "docs/hooks.md",
     "docs/release.md",
-    "docs/migration-v3.md",
     "CHANGELOG.md",
     "LICENSE",
     "plans/templates/plan.meta.v4.json",
@@ -23,7 +20,10 @@
     "evals/e2e-protocol.ps1",
     "evals/V4-ADAPTER.md",
     "tests/e2e-v4-adapter.tests.ps1",
-    "tests/e2e-v4-cli.tests.ps1"
+    "tests/e2e-v4-cli.tests.ps1",
+    "schemas/compat/plan-meta-v3.schema.json",
+    "plans/examples/small-v4.meta.json",
+    "docs/installation-v4.md"
   ],
   "optional": [
     "hooks"
@@ -46,6 +46,14 @@
     "evals/expected",
     "tests/validate-plan.tests.ps1",
     "tests/detect-drift.tests.ps1",
-    "tests/fixtures/plan-metadata"
+    "tests/fixtures/plan-metadata",
+    "plans/templates/plan.meta.v3.json",
+    "plans/examples/small-v3.meta.json",
+    "docs/migration-v3.md",
+    "docs/superpowers/plans/2026-10-03-controlflow-v3.md",
+    "schemas/plan-meta-v3.schema.json",
+    "evals/E2E-CACHE.md",
+    "evals/prepare-e2e-cache.ps1",
+    "tests/e2e-cache.tests.ps1"
   ]
 }

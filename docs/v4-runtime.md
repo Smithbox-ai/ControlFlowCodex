@@ -1,12 +1,18 @@
-# V4 opt-in runtime interfaces
+# V4 runtime interfaces
 
-Package candidate 4.0.0-rc.1 supports contract/runtime 3.0.0 and opt-in 4.0.0.
-V3 remains default. No daemon, workflow DSL, new mandatory dependency or plugin
-agent is added. Local receipts provide integrity/provenance, not authentication.
+Package candidate 4.0.0-rc.2 uses contract/runtime 4.0.0 for every new run.
+Requires PowerShell 7.4 or newer; recorded validation uses 7.6.9. A minimum
+version declaration is not evidence of executing the platform matrix on 7.4.
+Public run creation rejects V3 before storage initialization. Existing V3 runs
+retain their original semantics and are visibly marked `legacy_semantics`.
+Their strict schema is `schemas/compat/plan-meta-v3.schema.json`, used only for
+existing runs, read-only validation and migration. Unknown versions fail closed.
+No daemon, workflow DSL, new mandatory dependency or plugin agent is added.
+Local receipts provide integrity/provenance, not authentication.
 
 ## Routing
 
-`classify-task.ps1 -SchemaVersion 4.0.0 -WorkType feature|bugfix|refactor|docs
+`classify-task.ps1 -WorkType feature|bugfix|refactor|docs
 -Domain core|supporting|generic|unknown` adds a fixed workflow and review policy.
 Risk remains independent. Persisted tier SMALL also covers trivial v4 docs.
 Only safe docs may use light. All other profiles require the six compact kinds;
@@ -16,7 +22,7 @@ Represent mixed domains conservatively as unknown. Existing reader limits apply.
 
 ## Contract and snapshots
 
-Use `get-storage-paths.ps1` and the separate v4 template. Both draft and final
+Use `get-storage-paths.ps1` and the V4 template. Both draft and final
 live outside source. Start-run observes source, index, foreign dirty paths,
 worktree/session/task/run identity. It cannot prove absence of edits before start.
 Known preparatory edits remain original foreign work, never adopted owned edits.
@@ -72,7 +78,8 @@ Preflight uses existing `{type:"preflight",status:"APPROVED"}` only with final
 contract, required artifacts/decisions and unchanged observed planning source.
 Adding a test counts as an edit. New owned code/tests are allowed only afterwards.
 Existing coverage events still map criterion IDs to captured checks. Human-only
-criteria need no dummy command. V3 keeps its original executable coverage rule.
+criteria need no dummy command. Existing V3 runs keep their original executable
+coverage rule; a migrated V4 task collects fresh artifacts and evidence.
 
 ## Re-entry and stops
 
@@ -135,9 +142,10 @@ Deterministic tests exercise supported APIs. Adapter smoke simulates callback
 payloads and is not real host dispatch. Local/plugin command hooks are unsupported
 in cloud orchestration; no trust is granted by packaging. Real host verification
 requires existing exact-definition trust and a separate local host path.
-Paired E2E remains blocked until ambient isolation, pinned inventories/settings,
-permitted telemetry and a concrete trial budget are established. No session-path
-reads are permitted for this task. JSON stdout may provide root usage but cannot
+Paired E2E execution and discovery remain blocked before native CLI, auth or
+session access: supported telemetry does not establish actual context/policy
+provenance, ambient isolation and complete child usage. A budget alone cannot
+supply that missing capability. JSON stdout may provide root usage but cannot
 prove complete child usage or skill injection/isolation. Missing measurements
 stay absent; no superiority or production-readiness claim follows from unit tests.
 

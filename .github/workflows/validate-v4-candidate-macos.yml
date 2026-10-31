@@ -32,7 +32,7 @@ jobs:
 
   candidate-aggregate:
     needs: cleanup-diagnostic
-    if: needs.cleanup-diagnostic.result == 'success' && needs.cleanup-diagnostic.outputs.diagnostic_passed == 'true' && needs.cleanup-diagnostic.outputs.source_sha256 == 'd369b6711f0d618fafd04853893df34c7bdab3caf68d3d94f309336e06046848' && needs.cleanup-diagnostic.outputs.commit == github.sha
+    if: needs.cleanup-diagnostic.result == 'success' && needs.cleanup-diagnostic.outputs.diagnostic_passed == 'true' && needs.cleanup-diagnostic.outputs.source_sha256 == '5d501f07c7800862dbac471fce5d743cda469b1624b6e97ba212ec1a4a8a21de' && needs.cleanup-diagnostic.outputs.commit == github.sha
     runs-on: macos-15
     timeout-minutes: 40
     steps:

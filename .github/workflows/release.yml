@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Semver version to package (e.g. 3.0.0-rc.1). Ignored when triggered by a v* tag."
+        description: "Semver version to package (e.g. 4.0.0-rc.2). Ignored when triggered by a v* tag."
         required: false
         default: ""
 

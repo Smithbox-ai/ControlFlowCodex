@@ -89,7 +89,7 @@ try {
     $validation=& (Join-Path $repo 'evals/run-risk-diagnostics.ps1') -RepoRoot $repo -ValidateOnly -WindowsSandbox unelevated
     Assert (($validation -join "`n") -match 'VALID executable Diagnostics cases: 3') 'diagnostic CLI reuses unpaid validation and forwards Windows sandbox setting'
     $cohorts=@{};$reviewRoot=Join-Path $scratch 'annotations'
-    foreach($arm in @('native','v3')){
+    foreach($arm in @('native','v4')){
         $directory=Join-Path $scratch ('cohort-'+$arm);$cohorts[$arm]=$directory
         $rows=[Collections.Generic.List[object]]::new()
         Write-E2EText (Join-Path $directory 'manifest.json') (@{suite='Diagnostics';variant=$arm;trials=1;case_ids=@($diagnosticCases.id);model='test-model';effort='high';host='test-host';cli_version='0.160.0';project_trust='untrusted';sandbox='workspace-write';windows_sandbox='unelevated';approval_policy='never';approvals_reviewer='user';settings=@();max_tokens=1000;max_tool_calls=20;max_wall_seconds=60}|ConvertTo-Json -Depth 10)
@@ -99,26 +99,26 @@ try {
             $dcrit=$dc.diagnostic_criteria[0]
             $finding=@{category=$dcrit.category;file=$dcrit.file;start_line=$dcrit.start_line;end_line=$dcrit.end_line;mechanism='Specific vulnerable operation';consequence='Violation of documented requirement';mitigation='Enforce the requirement before performing the operation'}
             Write-E2EText (Join-Path $df.root 'diagnostics.json') (@{schema_version='1.0.0';findings=@($finding)}|ConvertTo-Json -Depth 10)
-            $r=@{case_id=$dc.id;tier=$dc.tier;variant=$arm;trial=1;status='success';false_completion=$false;outcome=(Test-E2EOutcome -Case $dc -Fixture $df);risk_diagnostics=(Test-E2ECriticalRiskDiagnostics -Case $dc -Fixture $df);usage=@{complete=$true;input_tokens=90;output_tokens=10;cached_input_tokens=0;total_tokens=100;tool_calls=0};provenance=@{model='test-model';effort='high';host='test-host';fixture_hash=$df.fixture_hash;settings=@();project_trust='untrusted';sandbox='workspace-write';windows_sandbox='unelevated';approval_policy='never';approvals_reviewer='user';cli_version='0.160.0';budget=@{tokens=1000;tools=20;wall_seconds=60}}}
+            $r=@{schema_version='2.0.0';case_id=$dc.id;tier=$dc.tier;variant=$arm;trial=1;status='success';false_completion=$false;outcome=(Test-E2EOutcome -Case $dc -Fixture $df);risk_diagnostics=(Test-E2ECriticalRiskDiagnostics -Case $dc -Fixture $df);usage=@{complete=$true;input_tokens=90;output_tokens=10;cached_input_tokens=0;total_tokens=100;tool_calls=0};provenance=@{model='test-model';effort='high';host='test-host';fixture_hash=$df.fixture_hash;settings=@();project_trust='untrusted';sandbox='workspace-write';windows_sandbox='unelevated';approval_policy='never';approvals_reviewer='user';cli_version='0.160.0';collector='stdout-jsonl';protocol_version='exec-jsonl-root-v1';plugin_sha256=('b'*64);budget=@{tokens=1000;tools=20;wall_seconds=60}}}
             $rp=Join-Path $td 'result.json';Write-E2EText $rp ($r|ConvertTo-Json -Depth 40);$rows.Add($r)
-            $annotation=@{schema_version='1.0.0';case_id=$dc.id;criteria_sha256=$r.risk_diagnostics.criteria_sha256;artifact_sha256=$r.risk_diagnostics.artifact_sha256;result_sha256=(Get-FileHash $rp).Hash.ToLowerInvariant();sources=$r.risk_diagnostics.source_hashes;reviewer='test-independent-reviewer';reviewer_kind='human';reviewed_at='2026-10-03T00:00:00Z';criteria=@(@{id=$dcrit.id;identified=$arm -eq 'v3';finding_index=0;rationale='Test annotation of whether the specific expected mechanism was diagnosed.'})}
+            $annotation=@{schema_version='1.0.0';case_id=$dc.id;criteria_sha256=$r.risk_diagnostics.criteria_sha256;artifact_sha256=$r.risk_diagnostics.artifact_sha256;result_sha256=(Get-FileHash $rp).Hash.ToLowerInvariant();sources=$r.risk_diagnostics.source_hashes;reviewer='test-independent-reviewer';reviewer_kind='human';reviewed_at='2026-10-03T00:00:00Z';criteria=@(@{id=$dcrit.id;identified=$arm -eq 'v4';finding_index=0;rationale='Test annotation of whether the specific expected mechanism was diagnosed.'})}
             Write-E2EText (Join-Path $reviewRoot "$arm/$($dc.id)/1.json") ($annotation|ConvertTo-Json -Depth 20)
         }
         Write-E2EText (Join-Path $directory 'summary.json') (@{results=$rows.ToArray()}|ConvertTo-Json -Depth 40)
     }
     $unmeasuredPath=Join-Path $scratch 'unmeasured.json'
-    & (Join-Path $repo 'evals/compare-risk-diagnostics.ps1') -NativeDirectory $cohorts.native -V3Directory $cohorts.v3 -OutputPath $unmeasuredPath|Out-Null
+    & (Join-Path $repo 'evals/compare-risk-diagnostics.ps1') -NativeDirectory $cohorts.native -V4Directory $cohorts.v4 -OutputPath $unmeasuredPath|Out-Null
     $unmeasured=Get-Content $unmeasuredPath -Raw|ConvertFrom-Json -AsHashtable -Depth 100
     Assert (-not $unmeasured.diagnostic_metrics_complete -and $null -eq $unmeasured.arms.native.recall -and $unmeasured.arms.native.collection_coverage -eq 1 -and $unmeasured.arms.native.semantic_coverage -eq 0) 'collected diagnoses without annotations cannot produce semantic recall'
     $measuredPath=Join-Path $scratch 'measured.json'
-    & (Join-Path $repo 'evals/compare-risk-diagnostics.ps1') -NativeDirectory $cohorts.native -V3Directory $cohorts.v3 -ReviewsDirectory $reviewRoot -OutputPath $measuredPath|Out-Null
+    & (Join-Path $repo 'evals/compare-risk-diagnostics.ps1') -NativeDirectory $cohorts.native -V4Directory $cohorts.v4 -ReviewsDirectory $reviewRoot -OutputPath $measuredPath|Out-Null
     $measured=Get-Content $measuredPath -Raw|ConvertFrom-Json -AsHashtable -Depth 100
-    Assert ($measured.diagnostic_metrics_complete -and $measured.arms.native.recall -eq 0 -and $measured.arms.v3.recall -eq 1 -and $measured.critical_risk_recall_delta -eq 1 -and -not $measured.production_ready) 'offline comparison measures bounded reviewed recall separately from production readiness'
+    Assert (-not $measured.diagnostic_metrics_complete -and $measured.arms.native.recall -eq 0 -and $measured.arms.v4.recall -eq 1 -and $null -eq $measured.critical_risk_recall_delta -and $measured.status -ceq 'BLOCKED' -and -not $measured.production_ready) 'manual annotation counts remain distinct from unavailable paired native provenance and comparative recall'
     $firstId=$diagnosticCases[0].id
     $capturedPath=Join-Path $cohorts.native ('trials/fixture-'+(Get-E2EHash $firstId).Substring(0,16)+'/1/repo/diagnostics.json')
     $originalCaptured=[IO.File]::ReadAllText($capturedPath);Write-E2EText $capturedPath ($originalCaptured+"`n")
     $alteredPath=Join-Path $scratch 'altered-unreviewed.json'
-    & (Join-Path $repo 'evals/compare-risk-diagnostics.ps1') -NativeDirectory $cohorts.native -V3Directory $cohorts.v3 -OutputPath $alteredPath|Out-Null
+    & (Join-Path $repo 'evals/compare-risk-diagnostics.ps1') -NativeDirectory $cohorts.native -V4Directory $cohorts.v4 -OutputPath $alteredPath|Out-Null
     $altered=Get-Content $alteredPath -Raw|ConvertFrom-Json -AsHashtable -Depth 100
     Assert ($altered.arms.native.collected_criteria -eq 2 -and $altered.arms.native.collection_coverage -lt 1 -and -not $altered.diagnostic_metrics_complete) 'post-run artifact replacement is excluded from collection coverage even without reviews'
     Write-E2EText $capturedPath $originalCaptured
@@ -126,15 +126,15 @@ try {
     $partialSummary.results=@($partialSummary.results|Select-Object -First 2)
     Write-E2EText (Join-Path $cohorts.native 'summary.json') ($partialSummary|ConvertTo-Json -Depth 40)
     $partialPath=Join-Path $scratch 'partial.json'
-    & (Join-Path $repo 'evals/compare-risk-diagnostics.ps1') -NativeDirectory $cohorts.native -V3Directory $cohorts.v3 -ReviewsDirectory $reviewRoot -OutputPath $partialPath|Out-Null
+    & (Join-Path $repo 'evals/compare-risk-diagnostics.ps1') -NativeDirectory $cohorts.native -V4Directory $cohorts.v4 -ReviewsDirectory $reviewRoot -OutputPath $partialPath|Out-Null
     $partial=Get-Content $partialPath -Raw|ConvertFrom-Json -AsHashtable -Depth 100
     Assert (-not $partial.diagnostic_metrics_complete -and $partial.arms.native.unobserved_criteria -eq 1 -and $partial.arms.native.semantic_coverage -lt 1 -and $null -eq $partial.arms.native.recall) 'unrun diagnosis remains in requested denominator and prevents complete recall'
     $manifestPath=Join-Path $cohorts.native 'manifest.json';$savedManifest=[IO.File]::ReadAllText($manifestPath)
     $wrongManifest=$savedManifest|ConvertFrom-Json -AsHashtable -Depth 100;$wrongManifest.model='different-model';Write-E2EText $manifestPath ($wrongManifest|ConvertTo-Json -Depth 20)
-    $mismatch=$false;try{& (Join-Path $repo 'evals/compare-risk-diagnostics.ps1') -NativeDirectory $cohorts.native -V3Directory $cohorts.v3 -OutputPath (Join-Path $scratch 'wrong-model.json')|Out-Null}catch{$mismatch=$true}
+    $mismatch=$false;try{& (Join-Path $repo 'evals/compare-risk-diagnostics.ps1') -NativeDirectory $cohorts.native -V4Directory $cohorts.v4 -OutputPath (Join-Path $scratch 'wrong-model.json')|Out-Null}catch{$mismatch=$true}
     Assert $mismatch 'actual diagnostic model provenance must match declared cohort'
     $wrongManifest.Remove('max_tokens');Write-E2EText $manifestPath ($wrongManifest|ConvertTo-Json -Depth 20)
-    $missingProvenance=$false;try{& (Join-Path $repo 'evals/compare-risk-diagnostics.ps1') -NativeDirectory $cohorts.native -V3Directory $cohorts.v3 -OutputPath (Join-Path $scratch 'missing-provenance.json')|Out-Null}catch{$missingProvenance=$true}
+    $missingProvenance=$false;try{& (Join-Path $repo 'evals/compare-risk-diagnostics.ps1') -NativeDirectory $cohorts.native -V4Directory $cohorts.v4 -OutputPath (Join-Path $scratch 'missing-provenance.json')|Out-Null}catch{$missingProvenance=$true}
     Assert $missingProvenance 'missing declared diagnostic budgets cannot be measured'
     Write-E2EText $manifestPath $savedManifest
     $after=Get-E2EHash ((Get-E2ECases -RepoRoot $repo -Suite Release|ForEach-Object {@{id=$_.id;task=$_.task;files=$_.files;answers=$_.answers}})|ConvertTo-Json -Depth 30 -Compress)

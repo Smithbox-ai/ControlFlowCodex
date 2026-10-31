@@ -1,10 +1,10 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$RepoRoot,
-    [ValidateSet('native','v3')][string]$Variant='native',
-    [switch]$ValidateOnly,[switch]$Execute,
+    [ValidateSet('native','v4')][string]$Variant='v4',
+    [switch]$ValidateOnly,[switch]$PrepareOnly,[switch]$Execute,
     [string]$OutDir,[string]$Model,[ValidateSet('none','minimal','low','medium','high','xhigh','max')][string]$Effort,[string]$HostLabel,
-    [string]$CliPath,[string]$ExpectedCliVersion,[string]$SessionRoot,
+    [string]$CliPath,[string]$ExpectedCliVersion,
     [int]$MaxWallSeconds,[int]$MaxTotalWallSeconds,[long]$MaxTokens,[long]$MaxTotalTokens,[int]$MaxToolCalls,[int]$MaxRuns,
     [int]$Trials=1,[int]$MaxResumes=2,
     [ValidateSet('on-request','never')][string]$ApprovalPolicy='never',

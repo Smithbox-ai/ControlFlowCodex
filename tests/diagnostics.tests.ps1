@@ -14,8 +14,8 @@ try {
     Assert (-not [IO.Directory]::Exists($paths.root)) 'doctor does not create state'
     Assert ((Git $r @('status','--porcelain=v1','--untracked-files=all')) -ceq $before) 'doctor leaves repository unchanged'
 
-    $p=Contract $r 'SMALL' 'none' 'Write-Output ok' 'diagnostics'
-    $run=Start-ControlFlowRun $r $p 'diagnostics'
+    $p=LegacyContract $r 'SMALL' 'none' 'Write-Output ok' 'diagnostics'
+    $run=New-HistoricalV3RunFixture $r $p 'diagnostics'
     $failure=(& $explain -RepoRoot $r -RunPath $run.run_path | Out-String)
     Assert ($LASTEXITCODE -eq 1 -and $failure -match 'CHECK_MISSING:check-1' -and $failure -match 'run') 'missing check has a reason and an action'
     Capture-ControlFlowCheck $r $run.run_path 'check-1' | Out-Null

@@ -8,9 +8,9 @@ function Fingerprint([string]$Root) {
         [IO.Path]::GetRelativePath($Root,$_.FullName).Replace('\','/')+':'+(Get-FileHash -LiteralPath $_.FullName).Hash
     }) -join "`n")
 }
-$obsolete=@('scripts/validate-plan.ps1','scripts/detect-drift.ps1','schemas/plan-meta.schema.json','plans/templates/plan.md','plans/templates/plan.meta.json','plans/examples/auth-migration-plan.md','plans/artifacts/auth-migration','evals/run-evals.ps1','evals/legacy','evals/cases','evals/baseline','evals/expected','tests/validate-plan.tests.ps1','tests/detect-drift.tests.ps1','tests/fixtures/plan-metadata')
+$obsolete=@('scripts/validate-plan.ps1','scripts/detect-drift.ps1','schemas/plan-meta.schema.json','plans/templates/plan.md','plans/templates/plan.meta.json','plans/examples/auth-migration-plan.md','plans/artifacts/auth-migration','evals/run-evals.ps1','evals/legacy','evals/cases','evals/baseline','evals/expected','tests/validate-plan.tests.ps1','tests/detect-drift.tests.ps1','tests/fixtures/plan-metadata','plans/templates/plan.meta.v3.json','plans/examples/small-v3.meta.json','docs/migration-v3.md','docs/superpowers/plans/2026-10-03-controlflow-v3.md','schemas/plan-meta-v3.schema.json','evals/E2E-CACHE.md','evals/prepare-e2e-cache.ps1','tests/e2e-cache.tests.ps1')
 function Assert-NoObsolete([string]$Root,[string]$Label) {
-    foreach($relative in $obsolete){Assert (-not (Test-Path -LiteralPath (Join-Path $Root $relative))) "$Label contains obsolete v2 path: $relative"}
+    foreach($relative in $obsolete){Assert (-not (Test-Path -LiteralPath (Join-Path $Root $relative))) "$Label contains retired package path: $relative"}
 }
 try {
     New-Item -ItemType Directory -Path $temp | Out-Null
@@ -27,7 +27,7 @@ try {
     Expand-Archive -LiteralPath $zip -DestinationPath (Join-Path $temp 'extracted')
     $extracted = Join-Path $temp 'extracted/controlflow-codex'
     foreach($relative in @('evals/e2e-protocol.ps1','evals/V4-ADAPTER.md','tests/e2e-v4-adapter.tests.ps1','tests/e2e-v4-cli.tests.ps1')){Assert (Test-Path -LiteralPath (Join-Path $extracted $relative) -PathType Leaf) "Extracted package lost V4 adapter: $relative"}
-    foreach ($file in @('plugin.json', '.codex-plugin/plugin.json', 'plans/templates/plan.meta.v3.json', 'plans/examples/small-v3.meta.json', 'scripts/validate-contract.ps1', 'scripts/get-storage-paths.ps1', 'scripts/lib/Storage.ps1', 'scripts/install.ps1', 'scripts/ControlFlow.Package.psm1', 'docs/release.md','schemas/plan-meta-v4.schema.json','schemas/phase-artifact-v1.schema.json','plans/templates/plan.meta.v4.json','docs/v4-runtime.md','docs/architecture-policy.md','docs/migration-v4.md')) {
+    foreach ($file in @('plugin.json', '.codex-plugin/plugin.json', 'schemas/compat/plan-meta-v3.schema.json', 'plans/examples/small-v4.meta.json', 'scripts/validate-contract.ps1', 'scripts/get-storage-paths.ps1', 'scripts/lib/Storage.ps1', 'scripts/install.ps1', 'scripts/ControlFlow.Package.psm1', 'docs/release.md','schemas/plan-meta-v4.schema.json','schemas/phase-artifact-v1.schema.json','plans/templates/plan.meta.v4.json','docs/v4-runtime.md','docs/architecture-policy.md','docs/migration-v4.md')) {
         Assert (Test-Path -LiteralPath (Join-Path $extracted $file) -PathType Leaf) "Extracted package lost nested file: $file"
     }
     $portable = Get-Content (Join-Path $extracted 'plugin.json') -Raw | ConvertFrom-Json
@@ -36,12 +36,12 @@ try {
     Assert ($portable.extensions.'com.openai'.interface.displayName -eq $compat.interface.displayName) 'Portable manifest lacks the OpenAI interface extension'
     Assert (-not (Test-Path -LiteralPath (Join-Path $extracted '.git'))) 'Package contains Git working state'
     Assert-NoObsolete $extracted 'Extracted ZIP'
-    & (Join-Path $extracted 'scripts/validate-contract.ps1') -Path (Join-Path $extracted 'plans/examples/small-v3.meta.json') | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'Extracted v3 SMALL example failed validation' }
+    & (Join-Path $extracted 'scripts/validate-contract.ps1') -Path (Join-Path $extracted 'plans/examples/small-v4.meta.json') | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Extracted V4 draft example failed validation' }
     $installHome = Join-Path $temp 'home'
     & (Join-Path $extracted 'scripts/install.ps1') -HomeRoot $installHome -Force | Out-Null
     $installedRoot=Join-Path $installHome 'plugins/controlflow-codex'
-    Assert (Test-Path (Join-Path $installedRoot 'plans/examples/small-v3.meta.json')) 'Extracted installer lost v3 SMALL example metadata'
+    Assert (Test-Path (Join-Path $installedRoot 'plans/examples/small-v4.meta.json')) 'Extracted installer lost V4 draft example metadata'
     Assert-NoObsolete $installedRoot 'Installed ZIP'
     # Exercise every known obsolete exact file and directory child without
     # changing the real checkout. Source, extracted ZIP and installer share
@@ -94,7 +94,7 @@ try {
     # Missing the required v3 example must fail before installer replacement.
     $installedManifest = Join-Path $installHome 'plugins/controlflow-codex/plugin.json'
     $before = [Convert]::ToBase64String([IO.File]::ReadAllBytes($installedManifest))
-    Remove-Item -LiteralPath (Join-Path $extracted 'plans/examples/small-v3.meta.json')
+    Remove-Item -LiteralPath (Join-Path $extracted 'plans/examples/small-v4.meta.json')
     $missingRejected = $false
     try { & (Join-Path $extracted 'scripts/install.ps1') -HomeRoot $installHome -Force | Out-Null } catch { $missingRejected = $true }
     Assert $missingRejected 'Missing required v3 source example was silently skipped'

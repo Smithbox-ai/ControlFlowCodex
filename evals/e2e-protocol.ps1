@@ -1,20 +1,16 @@
-# Evaluation adapters only. Local receipts establish integrity, never native authority.
+# Evaluation receipts establish integrity, never native authority or verified usage.
 function Get-E2EProtocolReadiness([hashtable]$Config) {
     if($Config.Variant -isnot [string]){throw 'Unknown E2E treatment'}
     $variant=$Config.Variant.ToLowerInvariant()
-    if($variant -cnotin @('native','v3','v4')){throw 'Unknown E2E treatment'}
-    $collector=if($Config.Collector -is [string]){$Config.Collector.ToLowerInvariant()}elseif($Config.ContainsKey('Collector')){throw 'Unknown E2E collector'}else{'legacy-rollout'}
-    if($collector -cnotin @('legacy-rollout','stdout-jsonl')){throw 'Unknown E2E collector'}
-    if($variant -ceq 'v4' -and $collector -cne 'stdout-jsonl'){throw 'V4 requires stdout-only collection; legacy session paths prohibited'}
-    if($collector -ceq 'legacy-rollout'){return @{collector=$collector;status='LEGACY';may_launch=$true;missing=@();assurance='legacy V3 semantics'}}
-    # No currently implemented native verifier supplies these facts. Configuration,
+    if($variant -cnotin @('native','v4')){throw 'Unknown or retired E2E treatment'}
+    $collector=if(-not $Config.ContainsKey('Collector')){'stdout-jsonl'}elseif($Config.Collector -is [string]){$Config.Collector.ToLowerInvariant()}else{throw 'Unknown E2E collector'}
+    if($collector -cne 'stdout-jsonl'){throw 'Only stdout-jsonl collection is supported; session collectors are retired'}
+    # No implemented native verifier supplies these facts. Requested settings,
     # model output and locally authored verified=true fields cannot replace one.
     return @{collector=$collector;protocol_version='exec-jsonl-root-v1';status='UNSUPPORTED';may_launch=$false;missing=@('actual-native-context-and-selected-entry','resolved-native-policies','complete-child-tree-and-usage','ambient-plugin-isolation','enforceable-in-flight-token-budget');assurance='root stdout observations only'}
 }
 function Get-E2ECollectedUsage {
-    param([ValidateSet('legacy-rollout','stdout-jsonl')][string]$Collector,[hashtable]$Capture,[hashtable]$LegacyArguments=@{})
-    $Collector=$Collector.ToLowerInvariant()
-    if($Collector -ceq 'legacy-rollout'){return Get-E2EUsage @LegacyArguments}
+    param([ValidateSet('stdout-jsonl')][string]$Collector='stdout-jsonl',[hashtable]$Capture)
     return Read-E2EStdoutUsage -Capture $Capture
 }
 function Read-E2EStdoutUsage([hashtable]$Capture) {

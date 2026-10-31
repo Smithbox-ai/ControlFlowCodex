@@ -1,8 +1,9 @@
 # Paired V4 adapter: offline preparation and explicit limits
 
-The V4 adapter is separate from the legacy native/V3 rollout collector. V3
-commands, result schema 1.0.0, and comparison defaults retain their semantics.
-V4 results/comparisons use schema 2.0.0 and explicit `v4` identities.
+The current adapter uses V4 by default, stdout-only collection and explicit
+`native`/`v4` identities. Results and comparisons use schema 2.0.0. Retired V3
+generation, rollout/history collection and cache provisioning are not execution
+fallbacks. Existing historical JSON and cache data are not rewritten or deleted.
 
 ## Unpaid preparation
 
@@ -10,7 +11,7 @@ Run with PowerShell 7, replacing the paths with new local directories:
 
 ```powershell
 pwsh -NoProfile -File ./evals/run-e2e.ps1 -RepoRoot $repo `
-  -Variant v4 -Collector stdout-jsonl -PrepareOnly `
+  -PrepareOnly `
   -CaseIds readme-title -OutDir $newEvidenceDirectory
 ```
 
@@ -20,7 +21,7 @@ initial source/baseline and task ID. It performs no Codex CLI calls, model turns
 installation, hook trust changes, or session-history reads. Do not reuse the
 output directory. Treat this output as preparation, not completed trials.
 
-`New-E2EV4Treatment` returns the explicit V4 prompt and only the
+`New-E2EV4Treatment` returns the V4 prompt and only the
 `CONTROLFLOW_STATE_ROOT` environment override. It never overrides identity/auth
 homes. The treatment requires the actual native thread ID; it does not create
 manual fallback runs or supply human approvals. Keep the referenced candidate
@@ -54,10 +55,11 @@ Consequently `Get-E2EProtocolReadiness` returns `UNSUPPORTED` and `may_launch=fa
 for stdout-only collection. `Invoke-E2ETrial` and `run-e2e.ps1 -Execute` block
 **before any CLI/model/session access** for both stdout arms. There is no local
 boolean, capability JSON, model statement, or approval flag that bypasses this
-check. Future support requires an implemented, independently validated native
-source and new negative tests. Model-trial authorization alone does not supply
-that technical capability. The legacy collector must not be used where session
-history access is prohibited.
+check. `-DiscoverOnly` has the same early block; the current adapter does not
+install/authenticate a CLI, provision caches or inspect session history first.
+Future support requires an implemented, independently validated native source
+and new negative tests. Model-trial authorization alone does not supply that
+technical capability.
 
 ## Comparisons
 

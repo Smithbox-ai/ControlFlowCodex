@@ -1,6 +1,6 @@
 {
   "name": "controlflow-codex",
-  "version": "4.0.0-rc.1",
+  "version": "4.0.0-rc.2",
   "description": "Explicit native Codex reliability layer: adaptive task contracts, captured evidence, completion gates, and bounded lifecycle hooks.",
   "author": {
     "name": "Smithbox-ai",
@@ -23,7 +23,7 @@
   "interface": {
     "displayName": "ControlFlow for Codex",
     "shortDescription": "Explicit repository work with current evidence",
-    "longDescription": "ControlFlow keeps v3 default and adds opt-in v4 planning artifacts, manual decision provenance, source-bound QA/review packets and quality reports. Native Codex owns tools, permissions and agent lifecycle. Candidate package; verified human receipts and real host/E2E acceptance remain unavailable or unverified.",
+    "longDescription": "ControlFlow uses V4 for new tasks: risk-aware planning artifacts, manual decision provenance, source-bound QA/review packets and quality reports. Existing V3 runs retain explicit legacy semantics. Native Codex owns tools, permissions and agent lifecycle. Candidate package; verified human receipts and complete comparative telemetry remain unavailable; platform and host evidence is source/version specific.",
     "developerName": "Smithbox-ai",
     "category": "Coding",
     "capabilities": [

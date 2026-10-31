@@ -1,12 +1,56 @@
-# ControlFlow for Codex v3
+# ControlFlow for Codex
 
-An explicit, compact reliability layer for native Codex. `$controlflow` adds a
-durable execution contract and evidence for completion. Native Codex owns tools,
-sandboxing, permission decisions, execution, review, and agent lifecycle.
+Compact planning and completion discipline for native Codex repository tasks.
+`$controlflow` adds a durable execution contract: what should change, how it will
+be checked, which decisions are needed, and what evidence permits completion.
+It helps keep a multi-step feature or fix aligned with its agreed behavior,
+preserve existing user work, and resume without treating missing checks as done.
+Native Codex owns tools, sandboxing, permission decisions, execution, review,
+and agent lifecycle. ControlFlow does not add a second orchestrator.
 
-This is a **v3 release candidate**. Deterministic tests establish the mechanical
-guarantees; real A/B outcomes and host callbacks need separate evidence before
-claiming production readiness.
+**Package `4.0.0-rc.2` is a candidate. V4 is the default for every new run.**
+New contracts use schema/runtime `4.0.0`. Existing V3 runs remain readable and
+retain their original rules, visibly marked `legacy_semantics`; they are not
+upgraded in place. New V3 runs, templates and examples are no longer offered.
+Functional acceptance of an installable candidate requires platform checks and
+verified packages bound to its exact source. Stable publication, comparative
+benefit and production-readiness claims require separate evidence; see the
+[release procedure](docs/release.md).
+
+## What V4 adds
+
+| Capability | What it does for a task |
+| --- | --- |
+| Risk-aware routes | Chooses a fixed feature, bugfix, refactor or docs workflow. Safe, small docs can stay light; tiny core, unknown-domain or high-risk changes retain the stronger review requirements. |
+| Context and design before edits | Records intent, constraints, relevant rules and a bounded design. Features require a human design decision; other human requirements follow domain/risk and the declared policy. A draft cannot authorize code or test edits. |
+| QA before the implementation plan | Saves scenarios with external expected results, negative/boundary cases and criterion/check IDs. QA recheck compares the result with that baseline; rewriting an expectation cannot legalize a defect. |
+| Evidence that becomes stale | Binds immutable phase snapshots and decisions to the task, run, intent, policy and exact inputs. Changed upstream artifacts invalidate dependent evidence; final QA and review packets bind the current source. |
+| Explicit replanning | Opens a new planning epoch after authorized implementation, preserving original foreign ownership and carried work. It cannot turn early unauthorized edits into an accepted baseline. |
+| Required judges and quality evidence | Requires every declared code, agent and human judge. Captured checks and supported reports supply code evidence; an agent verdict cannot replace a required human decision. Unsupported required capabilities block. |
+| Honest stops and delivery | Keeps human wait, rejection, interruption and exhausted retries incomplete. Resume needs the exact current decision where required; completion needs a fresh gate and a compact evidence-backed review packet. |
+
+There is one production writer. Native readers are optional and bounded by the
+existing tier limits. Relevant references, shared IDs and small artifacts keep
+context focused; reduced token use or better results than vanilla Codex have
+not been established by comparative measurement.
+
+## A typical V4 task
+
+For a feature, the route is:
+
+1. Observe the baseline and prepare a draft contract, context and design.
+2. Obtain the required design decision, then save the QA baseline and
+   implementation plan. Finalize the contract and pass preflight before edits.
+3. Implement, capture the declared checks, obtain the required independent
+   reviews, and recheck the unchanged QA expectations against the result.
+4. Present the current review packet, obtain a final human decision if required,
+   and pass the completion gate. Missing evidence leaves the run incomplete.
+
+The six compact artifact kinds are `context`, `design`, `qa-plan`,
+`implementation-plan`, `qa-recheck` and `review-packet`. They are immutable JSON
+receipts in external state, not six mandatory repository documents. The safe
+`light` docs route requires only its review packet and applicable check evidence.
+See [V4 interfaces and payloads](docs/v4-runtime.md).
 
 ## Use
 
@@ -32,7 +76,8 @@ claiming production readiness.
 
 Illustrative outcomes, not recorded runs:
 
-- **SMALL / PASS:** the agent records successful checks and coverage; the completion
+- **SMALL / PASS:** the agent records the required current artifacts, decisions,
+  successful checks and coverage; the completion
   gate returns `PASS`. With manual fallback, the agent records completion and reports
   that automatic Stop enforcement was not verified.
 - **BLOCKED / manual fallback:** a missing check, inaccessible evidence or unanswered
@@ -42,27 +87,56 @@ Illustrative outcomes, not recorded runs:
 
 The detailed lifecycle is in [execution](skills/controlflow/references/execution.md).
 
+### Start a V4 task
+
+After installation and host setup, request a repository task in Codex:
+
+```text
+$controlflow-codex:controlflow Complete this repository task:
+add label normalization with Unicode-preserving trimming and an 80-character
+limit. Prepare the design and QA baseline before implementation. Do not commit.
+```
+
+New runs always use V4; no opt-in flag is needed. Use
+`plans/templates/plan.meta.v4.json` at the new task's canonical external
+`contract_path` returned by `get-storage-paths.ps1`. Replace the sample task,
+baseline, scope, criteria and check declarations with actual task evidence.
+The template is a draft, and successful schema validation alone permits no edits.
+These read-only commands show the route and validate the bundled draft shape:
+
+```powershell
+pwsh -NoProfile -File scripts/classify-task.ps1 -WorkType feature -Domain supporting -ChangedFiles 2 -BehaviorChange
+pwsh -NoProfile -File scripts/validate-contract.ps1 -Path plans/templates/plan.meta.v4.json
+```
+
+Classification does not activate a run. The agent must save the actual contract,
+collect its phase artifacts/decisions and pass preflight. Existing V3 runs
+stay legacy; [explicit migration](docs/migration-v4.md) creates a separate draft and
+requires fresh evidence. No approval or captured result is copied.
+
 For native plugin text invocation, use `$controlflow-codex:controlflow` with a
 repository task. Short aliases such as `$controlflow` require host support.
 Native plugins namespace skill names and explicit-only skills may be hidden
 from the implicit prompt catalogue. The entry skill chooses the tier
 from observed scope, behavior, boundaries, product uncertainty, and risk:
 
+Tier limits bound review effort and native readers; the V4 workflow profile also
+depends on work type, domain and risk:
+
 | Tier | Artifacts and review |
 | --- | --- |
-| TRIVIAL | Native work; no run state or agents |
-| SMALL | `plan.meta.json`, captured checks, direct delivery gate |
-| MEDIUM | JSON + short rationale; preflight and final conformance review |
-| LARGE | MEDIUM with explicit risks/ordering; at most two optional native readers |
+| SMALL | Compact contract and evidence; safe docs can use light, other work retains its fixed phase route |
+| MEDIUM | Explicit risks/ordering and required reviews; at most one optional native reader |
+| LARGE | Relevant boundary/high-risk review; at most two optional concurrent native readers |
 
 An unresolved HIGH risk forces LARGE. Only product-critical missing information
 requires clarification. A commit is required only when the user requests it.
 There is one production writer per task. Optional readers must have a concrete
 question and their usage counts toward the task total.
 
-Use `plans/templates/plan.meta.v3.json` for a new contract and validate it with
-`scripts/validate-contract.ps1 -Path <contract>`. The SMALL v3 example is
-`plans/examples/small-v3.meta.json`; replace its sample baseline and checks with
+Use `plans/templates/plan.meta.v4.json` for a new contract and validate it with
+`scripts/validate-contract.ps1 -Path <contract>`. The SMALL V4 draft example is
+`plans/examples/small-v4.meta.json`; replace its sample baseline and checks with
 actual repository evidence before starting a run.
 
 For multi-step work, ControlFlow uses native `update_plan` when available. It
@@ -79,7 +153,8 @@ remain available. See [the execution reference](skills/controlflow/references/ex
 
 ## Evidence and completion
 
-The schema version is `3.0.0`. All runtime bookkeeping is stored outside project
+New contract/runtime version is `4.0.0`; existing `3.0.0` runs retain explicit
+legacy semantics, and unknown versions are rejected. All runtime bookkeeping is stored outside project
 directories, by default under `<CODEX_HOME>/controlflow` (or
 `~/.codex/controlflow` when CODEX_HOME is unset). Set `CONTROLFLOW_STATE_ROOT` to
 an absolute external directory if the host requires another writable location;
@@ -93,10 +168,11 @@ Omit SessionId for explicit manual fallback. Each physical worktree/Git identity
 and session has a separate task contract and active marker; immutable evidence
 lives below that task's `runs/<run_id>/`. `state.json` publishes the coherent revision. The active
 session marker is bound to the physical worktree, Git directory, session, task,
-and run. A v2 plan or another session cannot activate a v3 gate.
+and run. Another session or a mismatched contract/runtime version cannot activate
+that gate.
 
 Old project-local runs are never automatically adopted, rewritten or deleted.
-See [migration](docs/migration-v3.md) before moving existing data. Only requested
+See [migration](docs/migration-v4.md) before moving existing data. Only requested
 task deliverables or explicitly requested report exports belong in the project;
 ControlFlow never adds bookkeeping directories or ignore rules there.
 
@@ -152,8 +228,17 @@ aid, not a security boundary. See [hook integration and limitations](docs/hooks.
 
 ## Install and package
 
-Requires Git and PowerShell 7. The root `plugin.json` is canonical; the
+Requires Git and PowerShell 7.4 or newer; 7.6.9 is tested and recommended.
+The root `plugin.json` is canonical; the
 `.codex-plugin/plugin.json` compatibility manifest mirrors its OpenAI extension.
+For Codex `0.166.0-alpha.5.1`, use the explicit `NativeLegacy` flavor: that host's
+root AgentPlugin loader omits bundled hooks. The default `Universal` flavor keeps
+the canonical root manifest. NativeLegacy contains the same shared runtime,
+skills and assets, omitting only that root manifest, and rejects unexpected
+recursive skills, links and MCP/apps capabilities. It is a host compatibility
+choice, not a trust bypass or automatic fallback. See
+[the compatibility procedure](docs/release.md#explicit-native-compatibility-flavor-candidate)
+before choosing a flavor.
 
 ```powershell
 pwsh -NoProfile -File scripts/install.ps1 -Force
@@ -161,12 +246,19 @@ pwsh -NoProfile -File scripts/install.ps1 -Uninstall -Force
 pwsh -NoProfile -File scripts/package.ps1
 ```
 
+For that specific native host, build with `scripts/package.ps1 -Flavor
+NativeLegacy` and install the verified extracted package with
+`scripts/install.ps1 -Flavor NativeLegacy -Force`. Both commands require explicit
+selection; installation/enabling still requires exact native hook trust and
+callback verification. Do not change flavors by editing installed cache files.
+
 `-HomeRoot <path>` supports isolated installation. The installer validates
 ownership and containment, stages the shared inventory, and rolls back a failed
 replacement or marketplace update. Other marketplace entries are preserved.
 Release smoke extracts the ZIP and installs **that extracted source**.
-See [release procedure](docs/release.md) for artifact publication and the stable
-release evidence gate.
+See [installation, upgrade and rollback](docs/installation-v4.md) for ZIP
+extraction and native setup, and [release procedure](docs/release.md) for artifact
+publication and the stable release evidence gate.
 
 ## Development and evaluation
 
@@ -175,38 +267,62 @@ pwsh -NoProfile -File tests/run-contract-tests.ps1
 pwsh -NoProfile -File evals/run-e2e.ps1 -RepoRoot . -Suite Pilot -ValidateOnly
 ```
 
-Windows/Linux CI runs deterministic suites. Authenticated E2E is explicit and
-budgeted. [Evals](evals/README.md) compare actual repository outcomes on the same
-fixtures/model/settings and count parent plus subagent tokens. Missing checks
-or metrics are incomplete, never success. The 12-case pilot is distinct from
-the 55-case release corpus; release assessment needs at least three paired
-trials and reports paired uncertainty and per-tier regressions.
+Deterministic suites and corpus validation run without model calls.
+[Evals](evals/README.md) prepare paired native/V4 fixtures and define comparison
+requirements. Execution and discovery remain blocked before CLI/auth/session
+access while supported telemetry cannot establish complete context, policies,
+child usage and isolation. Missing checks or metrics are incomplete, never
+success. The 12-case pilot is distinct from the 55-case release corpus; future
+comparative acceptance needs separately authorized, pinned paired trials.
 LARGE graders also exercise the file-to-file CLI. The separate
 [critical-risk diagnostic protocol](evals/RISK-DIAGNOSTICS.md) measures collection
 and independently reviewed recall; unreviewed findings have no certified recall.
 
+## Quality, verification and limits
+
+V4 can attach existing tools through declared quality profiles. Recognized JUnit
+and NUnit 3 reports support test counts; Stryker JSON supports mutation states
+and scores. Captures retain raw report hashes, declared tool/version, scope,
+configuration, baseline and exclusions. Missing, incomplete, unknown or
+unsupported evidence is not PASS; a required unsupported profile blocks.
+The runtime does not install scanners. Complexity/CRAP, SAST and DAST report
+adapters are currently unsupported. See [quality capabilities](docs/v4-runtime.md#quality-capabilities).
+
+Mutation testing measures whether tests detect controlled faults, not complete
+correctness. The plugin's own PowerShell gate/ledger tests have a separate,
+bounded source-specific mutation sensitivity pilot; this is not a universal
+PowerShell framework or Stryker support for PowerShell. CRAP is a risk indicator,
+not a universal threshold or a substitute for architectural review.
+
+| Status | Scope and limits |
+| --- | --- |
+| Implemented | V4 new-run default, fixed phase ordering, immutable bindings, planning re-entry, manual decision provenance, quality/report handling and evidence-based completion; existing V3 runs retain marked legacy semantics. |
+| Functional validation | Consult the candidate's accompanying validation report for exact source/package hashes, platform and tool versions, actual results and unresolved checks. A rebuilt ZIP requires its own byte binding. |
+| Native host verification | Installation, enablement, exact hook trust and real callbacks are separate observations. Historical callback evidence does not verify rebuilt rc.2 bytes or another host. |
+| Comparative and stable limits | Paired execution remains blocked without supported provenance, context, isolation and complete child accounting. Deterministic checks alone establish neither comparative benefit nor production readiness. Stable publication remains guarded by the verified release-evidence protocol requirement. |
+
+Human decisions use visible **manual assurance**: they record supplied provenance
+and exact artifact bindings. Local hashes, `human=true` or an agent's declaration
+do not authenticate a human. Required verified-human assurance fails closed
+because no trusted receipt verifier is provided.
+
+Hooks cannot guarantee termination of every already-running background command;
+native interruption and descendant process cleanup are different observations.
+There is no global hard token cap. The paired V4 adapter blocks execution while
+effective context, ambient plugin isolation, policy provenance and complete child
+usage cannot be established through supported telemetry. No private-history
+workaround or caller-authored capability flag supplies that proof. See
+[paired V4 limits](evals/V4-ADAPTER.md#collectors-and-execution-block) and
+[host limits](docs/hooks.md#v4-assurance-and-host-limits).
+
 ## Migration and rollback
 
-The v3 distribution contains only its current runtime, schema, template and
-examples. Retired v2 validators, drift/scoring runners, templates and example
-verdicts are removed. The v3 migration command accepts an external v2 contract
-and writes a separate copy; inspect its coverage and approve a fresh run.
-Do not reuse a v2 verdict as v3 evidence. See
-[migration and rollback](docs/migration-v3.md).
+Only V4 templates/examples are shipped for new work. The strict V3 schema lives
+under `schemas/compat/` for existing runs, read-only validation and migration;
+it does not enable new legacy runs. The migration command accepts an external
+V2 or V3 contract and creates a new V4 draft with commit mode `none`, without old
+state, approvals or captures. Existing run data stays untouched. Do not edit
+historical state to change its version. See [V4 migration](docs/migration-v4.md)
+and [package rollback](docs/installation-v4.md#upgrade-and-rollback).
 
 MIT — see [LICENSE](LICENSE).
-
-## V4 opt-in candidate
-
-Package `4.0.0-rc.1` adds separate contract/runtime `4.0.0` while v3 remains
-default. V4 fixes phase order, exact artifact inputs, original foreign ownership
-across planning epochs, manual decision provenance, QA baseline/recheck and
-source-bound review packets. Required verified human assurance blocks because no
-trusted verifier is provided. Full routes remain compact; safe docs can use light.
-
-Read [runtime interfaces](docs/v4-runtime.md), [migration](docs/migration-v4.md)
-and [architecture policy](docs/architecture-policy.md). No new software is
-automatically installed. Known report formats do not prove semantic correctness.
-Real host callbacks, complete platform-matrix evidence and isolated paired E2E
-remain separate acceptance gates. No production-readiness or superiority claim
-is made by this opt-in candidate.

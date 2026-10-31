@@ -13,11 +13,12 @@ Reflect the preflight result in available native `update_plan`, following
 unverified work stays incomplete. If unavailable, report textual progress;
 native TODO status is not approval or evidence.
 
-## V3 binding
+## V4 binding
 
-Read the canonical `plan.meta.json`; SMALL may have no Markdown rationale.
-For schema 3.0.0 use `scripts/validate-contract.ps1 -Path <contract>`, then the
-six questions below. MEDIUM/LARGE require APPROVED preflight before edits.
+Read the canonical `plan.meta.json`; compact artifacts need no duplicate Markdown.
+For schema 4.0.0 use `scripts/validate-contract.ps1 -Path <contract>`, then the
+six questions below. Full profiles require final contract/artifacts and APPROVED
+preflight before owned code or test edits, including SMALL features.
 Write the review rationale inside the active run directory and record
 `{"type":"preflight","status":"APPROVED"}` through `scripts/update-run.ps1`
 with explicit RepoRoot, RunPath, and EventPath. Runtime binds the approval to
@@ -27,14 +28,16 @@ Reject invented criterion coverage, unsafe adoption of initial user hunks,
 unresolved product-critical choices, and missing required independent review.
 Repair/replan before approval. Optional native readers follow the entry's tier
 limits, have precise questions, and their usage counts; no plugin agent runtime.
-Old v2 verdicts never activate v3 gates. See
+Old verdicts do not become V4 evidence. Existing V3 runs retain their original,
+visibly legacy rules; new V3 creation is rejected. See
 [execution](../controlflow/references/execution.md).
 
 ## Input
 
 - Read the active run's external `state.contract_path` and its evidence from disk;
   do not verify a chat copy. The JSON contract is canonical.
-- Validate against the bundled `schemas/plan-meta-v3.schema.json`.
+- Validate new contracts against `schemas/plan-meta-v4.schema.json`; the schema
+  under `schemas/compat/` is only for existing legacy runs/read-only migration.
 
 ## Adversarial stance
 
@@ -49,7 +52,9 @@ substitutes for verifier confidence.
 1. Can execution start from repository evidence?
 2. Are APIs/files/dependencies/schema assumptions verified against the repo?
 3. Are failure, migration, and rollback paths sufficient?
-4. Can success be proven by runnable checks?
+4. Does the plan define meaningful executable checks for code targets and the
+   required artifact-bound review/decision paths for agent/human targets? Mixed
+   targets are all-required; no judge substitutes for another.
 5. Is planned scope coherent with the requested outcome?
 6. Is the proposed implementation the smallest coherent change consistent with
    repository conventions, or does it introduce material speculative architecture
@@ -82,12 +87,14 @@ Status: APPROVED | NEEDS_REVISION | REPLAN
 ...
 ```
 
-- `APPROVED` — implementation may start.
+- `APPROVED` - the semantic preflight assessment accepts the proposed plan;
+  actual implementation still requires the saved final preflight gate.
 - `NEEDS_REVISION` — viable but specific defects must be fixed; revise the plan.
 - `REPLAN` — scope or architecture is not safely deliverable as written; route
   through the native host's replan path.
 
-Do not start implementation until `APPROVED`. Do not rewrite the plan or
+Do not start implementation until the required current approvals and preflight
+gate pass. An agent's assessment is not a human decision. Do not rewrite the plan or
 metadata as a side effect of producing a verdict; the planner and native host
 own any explicitly authorized revision.
 
@@ -103,7 +110,8 @@ sandboxing, retries, and subagent lifecycle.
 
 For v4, first validate schema, IDs, exact inputs, epoch and bindings, then review
 meaning. Require final declarations, context/design/QA/implementation artifacts
-and exact design decision before preflight. Local human receipts are manual
+and the exact human design decision when required by review_policy before
+preflight. Local human receipts are manual
 provenance; verified assurance blocks without a tested trusted source. Neither
 human=true, hashes, serverRequest/resolved nor timeout proves human approval.
 HUMAN_WAIT is a lawful incomplete stop, with no automatic continuation. Missing

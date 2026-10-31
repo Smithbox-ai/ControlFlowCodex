@@ -4,7 +4,7 @@ $readerSource=Get-Content -LiteralPath (Join-Path $script:CoreRoot 'scripts/lib/
 Assert ($readerSource -notmatch 'plan-meta\.schema\.json') 'migration input validation has no shipped v2 schema dependency'
 $r=NewFixture
 try {
-$p=Contract $r
+$p=LegacyContract $r
 $c=Read-ControlFlowContract -Path $p
 Assert ($c.contract.task_id -eq 'test-task') 'valid v3 contract read'
 $v=Get-Content $p -Raw|ConvertFrom-Json -AsHashtable

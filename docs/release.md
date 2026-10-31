@@ -1,5 +1,12 @@
 # Release publication
 
+Current candidate package is `4.0.0-rc.2`, with V4-only new-run creation and
+read/continue compatibility for existing V3 runs. Contract/runtime version
+`4.0.0` is separate from package and artifact-wire versions. This section
+describes publication checks; a candidate build or changelog entry does not
+mean that a tag or GitHub Release has been published. For local installation,
+upgrade and rollback, use [the installation guide](installation-v4.md).
+
 ## Explicit native compatibility flavor (candidate)
 
 The canonical repository and default `Universal` package retain the Agent
@@ -38,10 +45,12 @@ cannot remain. Registration failure restores the previous installation.
 Before real rollout preserve the owned source, marketplace and hashes. Refresh
 native cache only with supported `codex plugin add`, then compare the full file
 set/hashes against the selected artifact. Never edit cache or trusted hashes
-manually. To roll back, restore the saved Universal source using
-`install.ps1 -Flavor Universal -Force`, refresh through native `plugin add`, and
-verify saved bytes. Discovery, exact native trust, real callback smoke and
-isolated paired E2E remain separate acceptance requirements.
+manually. To roll back, extract the saved previous artifact and run its installer
+with its actual `-Flavor` and `-Force`, refresh through native `plugin add`, and
+verify saved bytes. There is no `-Rollback` flag. Discovery, exact native trust and
+real callback smoke are separate requirements for a claim of automatic host
+enforcement. Verified paired/host evidence is a separate stable-publication
+requirement; it is not supplied by a functionally tested installable candidate.
 
 The release workflow runs the contract suite on Windows, Linux, and macOS,
 builds and smoke-installs the extracted ZIP, and publishes a GitHub prerelease
@@ -59,7 +68,7 @@ rewritten. Untracked or modified checkout files are excluded. A missing or
 duplicate notes section fails the release. The checksum format is
 `<lowercase sha256>  <archive filename>`.
 
-Only prerelease versions such as `3.0.0-rc.1` are currently allowed. Stable
+Only prerelease versions such as `4.0.0-rc.2` are currently allowed. Stable
 versions are blocked before the workflow creates a tag or GitHub Release:
 `Stable releases are blocked until a verified release evidence protocol covers
 real paired A/B trials and host callbacks.` A manually provided approval flag
@@ -76,8 +85,8 @@ and [hook integration](hooks.md).
 
 For a new prerelease, update the manifests and add one matching version section
 to `CHANGELOG.md` before invoking the workflow or pushing its tag. Use a new
-version for changed bytes. For rollback and migration, see [migration and
-rollback](migration-v3.md).
+version for changed bytes. For migration, see
+[new V4 tasks from older contracts](migration-v4.md).
 
 ## Retry and partial publication
 

@@ -1,4 +1,4 @@
-. "$PSScriptRoot/core-test-helpers.ps1"
+. "$PSScriptRoot/v4-test-helpers.ps1"
 LoadCore
 $r=NewFixture
 try {
@@ -67,8 +67,8 @@ try {
 $b=Git $r @('rev-parse','HEAD')
 Git $r @('update-index','--assume-unchanged','owned.txt')|Out-Null;File $r 'owned.txt' 'hidden user edit'
 Throws {Get-ControlFlowGitSnapshot $r} 'assume-unchanged cannot hide initial foreign user content'
-$p=Contract $r 'SMALL' 'required' -SessionId 'hidden-index'
-Throws {Start-ControlFlowRun $r $p 'hidden-index'} 'run start fails closed on hidden index entries'
+$p=V4Contract $r draft 'hidden-index'
+Throws {Start-ControlFlowRun $r $p 'hidden-index'} 'V4 run start fails closed on hidden index entries'
 Git $r @('update-index','--no-assume-unchanged','owned.txt')|Out-Null
 Git $r @('update-index','--skip-worktree','owned.txt')|Out-Null
 Throws {Get-ControlFlowSourceDigest $r $b} 'skip-worktree observation is unsupported and fail-closed'

@@ -2,7 +2,7 @@
 LoadCore
 $r=NewFixture
 try {
-$p=Contract $r
+$p=LegacyContract $r
 $v=Get-Content $p -Raw|ConvertFrom-Json -AsHashtable
 $v.schema_version='4.0.0';$v.contract_status='draft';$v.work_type='feature'
 $v.domain=@{classification='supporting';rationale='Existing bounded behavior';refs=@('owned.txt')}
@@ -33,8 +33,8 @@ Assert ($route.workflow.profile -ceq 'light') 'TrivialSafeDocsLight'
 Assert ($route.tier -ceq 'SMALL') 'V4PersistedTierMatchesSchema'
 $v.workflow=$route.workflow;$v.tier=$route.tier;$v.work_type='docs';$v.domain.classification='generic';$v.review_policy.human_design=$false;SaveV
 Assert ((Read-ControlFlowContract $p).contract.workflow.profile -ceq 'light') 'ClassifierContractRoundTrip'
-$p=Contract $r;Assert ((Read-ControlFlowContract $p).contract.schema_version -ceq '3.0.0') 'V3StillValid'
-$run=Start-ControlFlowRun $r $p -ManualFallback
+$p=LegacyContract $r;Assert ((Read-ControlFlowContract $p).contract.schema_version -ceq '3.0.0') 'V3StillValid'
+$run=New-HistoricalV3RunFixture $r $p -ManualFallback
 $old=[IO.File]::ReadAllText($p);SaveV
 Throws {Read-ControlFlowRun $r $run.run_path} 'V3RuntimeRejectsV4Replacement'
 [IO.File]::WriteAllText($p,$old)

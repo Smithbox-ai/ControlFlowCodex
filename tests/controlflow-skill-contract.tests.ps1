@@ -40,7 +40,7 @@ Assert-Contains $plan "get-storage-paths.ps1" "canonical external plan location"
 Assert-Contains $execution "get-storage-paths.ps1" "external storage setup"
 Assert-Contains $readme "CONTROLFLOW_STATE_ROOT" "external storage configuration"
 foreach($guidance in @($plan,$verify,$review,$execution)) { Assert-NotContains $guidance 'plans/artifacts' 'project bookkeeping path' }
-Assert-Contains $plan "schema_version: 3.0.0" "plan v3 schema version"
+Assert-Contains $plan "schema_version: 4.0.0" "plan V4 schema version"
 Assert-Contains $plan "baseline" "plan baseline field"
 Assert-Contains $plan "dirty_paths" "plan dirty_paths field"
 Assert-Contains $plan "scope" "plan scope field"
@@ -48,7 +48,7 @@ Assert-Contains $plan "criteria" "plan criteria field"
 Assert-Contains $plan "checks" "plan checks field"
 Assert-Contains $plan "risks" "plan risks field"
 Assert-Contains $plan "phases" "plan phases field"
-Assert-Contains $plan "TRIVIAL" "plan trivial tier"
+Assert-Contains $plan "light profile" "safe docs proportionality"
 Assert-Contains $plan "LARGE" "plan large tier"
 Assert-Contains $plan "scripts/validate-contract.ps1" "plan validator command"
 Assert-Contains $plan '$controlflow-verify' 'plan hands off to verify'
@@ -112,10 +112,10 @@ Assert-NotContains $review "Over-Engineering Pass" "review generic over-engineer
 # --- existing tiers and native ownership remain intact ---
 $trivial = [regex]::Match($entry, '(?ms)^- \*\*TRIVIAL:\*\* .*?(?=^- \*\*|\z)').Value
 $small = [regex]::Match($entry, '(?ms)^- \*\*SMALL:\*\* .*?(?=^- \*\*|\z)').Value
-Assert-Contains $trivial 'no artifacts or agents' 'TRIVIAL keeps native-only work'
-Assert-Contains $small 'direct completion gate' 'SMALL retains direct delivery'
-if ($small -match '\breview\b') { throw 'SMALL must not gain a mandatory review stage' }
-Assert-Contains $execution 'SMALL gains no mandatory review pass' 'writer-only policy for SMALL'
+Assert-Contains $entry 'new legacy runs are rejected' 'V4-only new admission'
+Assert-Contains $small 'compact V4 profile' 'SMALL keeps profile-sensitive gates'
+Assert-Contains $plan 'do not add mandatory readers or diagrams' 'light docs avoid ceremony'
+Assert-Contains $execution 'Light docs follow their packet/applicable-evidence path' 'light docs keep compact current evidence'
 Assert-Contains $verify 'zero shipped subagents' 'no new verifier agent requirement'
 Assert-Contains $review 'Native `/review` is the general code-review pass' 'native generic review ownership'
 
@@ -127,9 +127,9 @@ Assert-Contains $reviewYaml "allow_implicit_invocation: false" "review implicit 
 # --- README: compact vNext framing ---
 Assert-Contains $readme "Compact" "README compact framing"
 Assert-Contains $readme "durable execution contract" "README durable contract"
-Assert-Contains $readme "plan.meta.json" "README metadata reference"
+Assert-Contains $readme "contract_path" "README canonical metadata reference"
 Assert-Contains $readme "completion-gate.ps1" "README completion gate"
-Assert-Contains $readme "validate-contract.ps1" "README v3 validator command"
+Assert-Contains $readme "validate-contract.ps1" "README current validator command"
 Assert-Contains $readme "evals" "README eval methodology"
 Assert-NotContains $readme "score-plan.ps1" "README runtime scorer reference"
 Assert-NotContains $readme "revision-request" "README revision loop reference"
