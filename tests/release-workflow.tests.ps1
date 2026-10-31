@@ -2,17 +2,18 @@ $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 function Assert([bool]$Condition, [string]$Message) { if (-not $Condition) { throw $Message } }
 
-# Exercise the exact CLI version predicate shipped in the workflow, without
-# installing a CLI or requiring credentials.
+# The V4 workflow must stop before installation/authentication while the native
+# provenance capabilities are unavailable. It has no active model-trial CLI pin.
 $evalPath = Join-Path $repo '.github/workflows/eval.yml'
 if (Test-Path -LiteralPath $evalPath -PathType Leaf) {
     $eval = Get-Content -LiteralPath $evalPath -Raw
-    $match = [regex]::Match($eval, "(?m)^\s*if\(\`$env:CLI_VERSION -cnotmatch '([^']+)'\)")
-    Assert $match.Success 'E2E workflow CLI version validation is missing'
-    $pattern = $match.Groups[1].Value
-    foreach ($version in @('0.160.0', '1.2.3')) { Assert ($version -cmatch $pattern) "Valid CLI version rejected: $version" }
-    foreach ($version in @('0.160', 'v0.160.0', '0.160.0;echo', '0x160x0', '')) { Assert ($version -cnotmatch $pattern) "Invalid CLI version accepted: $version" }
-} else { Write-Output 'SKIP workflow-only CLI validation: workflow files are not in the portable package' }
+    Assert ($eval.Contains('-Variant v4 -Collector stdout-jsonl -Execute')) 'E2E workflow lacks the explicit V4 protocol gate'
+    Assert ($eval -notmatch 'CLI_VERSION|npm install|OPENAI_API_KEY|codex login|\.codex/sessions|prepare-e2e-cache') 'E2E workflow installs/authenticates or retains retired telemetry before the protocol gate'
+    $blocked=$false
+    try { & (Join-Path $repo 'evals/run-e2e.ps1') -RepoRoot $repo -Variant v4 -Collector stdout-jsonl -Execute -CliPath (Join-Path $repo '__missing_cli_must_not_be_used__') | Out-Null }
+    catch { $blocked=$_.Exception.Message -match '^BLOCKED before any CLI/model/session access:' }
+    Assert $blocked 'E2E workflow command failed to block before CLI/model/session access'
+} else { Write-Output 'SKIP workflow-only protocol validation: workflow files are not in the portable package' }
 
 $channel = Join-Path $repo 'scripts/assert-release-channel.ps1'
 Assert (Test-Path -LiteralPath $channel -PathType Leaf) 'Release channel guard is missing'

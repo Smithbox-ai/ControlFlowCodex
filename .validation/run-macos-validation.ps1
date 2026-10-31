@@ -6,7 +6,7 @@ if(-not $IsMacOS -or $env:GITHUB_REPOSITORY -cne 'Smithbox-ai/ControlFlowCodex' 
 $sourceZip=Join-Path $PSScriptRoot 'source.zip'
 $manifestPath=Join-Path $PSScriptRoot 'source-manifest.json'
 $zipHash=(Get-FileHash -LiteralPath $sourceZip -Algorithm SHA256).Hash.ToLowerInvariant()
-if($zipHash -cne 'd7e24ebfb651367db034daf43c9e53160336a0bd06f5e85fd39034c400fa8662'){throw 'SOURCE_ARCHIVE_HASH_MISMATCH'}
+if($zipHash -cne 'cd14d21b45d325bb63caec39063b1cee936c2dbe1bd0708f61cb87a51d975849'){throw 'SOURCE_ARCHIVE_HASH_MISMATCH'}
 $physicalTemp=(& /bin/sh -c 'cd "$1" && pwd -P' sh $env:RUNNER_TEMP)
 if($LASTEXITCODE -or -not [IO.Path]::IsPathFullyQualified($physicalTemp)){throw 'PHYSICAL_TEMP_UNAVAILABLE'}
 $root=[IO.Path]::GetFullPath($env:CF_VALIDATION_ROOT)
