@@ -1,7 +1,11 @@
 {
   "schema_version": 1,
-  "source_archive_sha256": "7d65533e1e7aeca13644458fb56156397e7782dd7a9211d4011b458a60fa6252",
-  "source_content_digest": "fafd3fbd4d9f430975a43d06d8c36f05c1d5c4eedc40b82eab6a86881a5c6078",
+  "source_archive_sha256": "4bb79bcbec28187a9ca6831f9aca8f4ca3e10aa029dfc0ebc35f6ece85442d37",
+  "parent_source_archive_sha256": "7d65533e1e7aeca13644458fb56156397e7782dd7a9211d4011b458a60fa6252",
+  "source_changes": [
+    "scripts/lib/Git.ps1",
+    "tests/process-timeout.tests.ps1"
+  ],
   "files": [
     {
       "path": ".codex-plugin/plugin.json",
@@ -229,7 +233,7 @@
     },
     {
       "path": "scripts/lib/Git.ps1",
-      "sha256": "ed1099cef2f42011af48d74c745afeb90f2e29c8098daf4df404fa734fd3339c"
+      "sha256": "1e6efd8616a45dd55c355f56fc28408f3e64a0800f7e84a0aa545fbab288d638"
     },
     {
       "path": "scripts/lib/Interrupts.ps1",
@@ -425,7 +429,7 @@
     },
     {
       "path": "tests/process-timeout.tests.ps1",
-      "sha256": "da0431e25d2f7ce3a865b86114d21322aed49dc4253863410ec47bce73410268"
+      "sha256": "59e3d01a8273c5367ae1fb2b4783ef87dc6df737453996987f4b77b7982317ce"
     },
     {
       "path": "tests/promotion-v4.tests.ps1",

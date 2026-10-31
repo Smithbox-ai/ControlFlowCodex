@@ -8,18 +8,46 @@ permissions:
   contents: read
 
 jobs:
-  candidate-macos:
+  cleanup-diagnostic:
     runs-on: macos-15
     timeout-minutes: 20
+    outputs:
+      diagnostic_passed: ${{ steps.diagnostic.outputs.diagnostic_passed }}
+      source_sha256: ${{ steps.diagnostic.outputs.source_sha256 }}
+      commit: ${{ steps.diagnostic.outputs.commit }}
     steps:
-      - name: Checkout immutable validation commit
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
           lfs: false
           submodules: false
-      - name: Validate frozen candidate (no models or artifact storage)
+      - name: Native cleanup diagnostic; reject missing evidence
+        id: diagnostic
         shell: bash
+        env:
+          CF_VALIDATION_MODE: diagnostic
+        run: bash ./.validation/start-validation.sh
+
+  candidate-aggregate:
+    needs: cleanup-diagnostic
+    if: needs.cleanup-diagnostic.result == 'success' && needs.cleanup-diagnostic.outputs.diagnostic_passed == 'true' && needs.cleanup-diagnostic.outputs.source_sha256 == '4bb79bcbec28187a9ca6831f9aca8f4ca3e10aa029dfc0ebc35f6ece85442d37' && needs.cleanup-diagnostic.outputs.commit == github.sha
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          lfs: false
+          submodules: false
+      - name: Original35-suite aggregate, reference corpora and both packages
+        shell: bash
+        env:
+          CF_VALIDATION_MODE: aggregate
+          CF_DIAGNOSTIC_PASSED: ${{ needs.cleanup-diagnostic.outputs.diagnostic_passed }}
+          CF_DIAGNOSTIC_SOURCE: ${{ needs.cleanup-diagnostic.outputs.source_sha256 }}
+          CF_DIAGNOSTIC_COMMIT: ${{ needs.cleanup-diagnostic.outputs.commit }}
         run: bash ./.validation/start-validation.sh

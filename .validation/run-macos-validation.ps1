@@ -1,10 +1,12 @@
 $ErrorActionPreference='Stop'
+$mode=$env:CF_VALIDATION_MODE
+if($mode -cnotin @('diagnostic','aggregate')){throw 'UNKNOWN_VALIDATION_MODE'}
 if(-not $IsMacOS -or $env:GITHUB_REPOSITORY -cne 'Smithbox-ai/ControlFlowCodex' -or $env:GITHUB_REF -cne 'refs/heads/validation/v4-macos'){throw 'WRONG_VALIDATION_HOST_OR_REF'}
 . (Join-Path $PSScriptRoot 'Test-SourceSnapshot.ps1')
 $sourceZip=Join-Path $PSScriptRoot 'source.zip'
 $manifestPath=Join-Path $PSScriptRoot 'source-manifest.json'
 $zipHash=(Get-FileHash -LiteralPath $sourceZip -Algorithm SHA256).Hash.ToLowerInvariant()
-if($zipHash -cne '7d65533e1e7aeca13644458fb56156397e7782dd7a9211d4011b458a60fa6252'){throw 'SOURCE_ARCHIVE_HASH_MISMATCH'}
+if($zipHash -cne '4bb79bcbec28187a9ca6831f9aca8f4ca3e10aa029dfc0ebc35f6ece85442d37'){throw 'SOURCE_ARCHIVE_HASH_MISMATCH'}
 $physicalTemp=(& /bin/sh -c 'cd "$1" && pwd -P' sh $env:RUNNER_TEMP)
 if($LASTEXITCODE -or -not [IO.Path]::IsPathFullyQualified($physicalTemp)){throw 'PHYSICAL_TEMP_UNAVAILABLE'}
 $root=[IO.Path]::GetFullPath($env:CF_VALIDATION_ROOT)
@@ -28,7 +30,7 @@ $pesterRoot=Join-Path $root 'Pester';[IO.Compression.ZipFile]::ExtractToDirector
 Import-Module (Join-Path $pesterRoot 'Pester.psd1') -Force
 if((Get-Module Pester).Version.ToString() -cne '5.9.1'){throw 'WRONG_PESTER_VERSION'}
 $os=& /usr/bin/sw_vers
-$summary=[ordered]@{status='RUNNING';started_at=[datetime]::UtcNow.ToString('o');commit=$env:GITHUB_SHA;repository=$env:GITHUB_REPOSITORY;source_zip_sha256=$zipHash;source_files=121;baseline=$baseline;macos=@($os);architecture=[Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString();image_os=$env:ImageOS;image_version=$env:ImageVersion;pwsh=$PSVersionTable.PSVersion.ToString();git=(& git --version);pester='5.9.1';pester_nupkg_sha256='8dd4060fc3bc895f05bd655e4ab82abe346de54a4e6415dfb727cc8378672b69';models=0;artifact_uploads=0;cache_uploads=0;packages=@();corpora=@();native_callbacks='NOT_RUN'}
+$summary=[ordered]@{status='RUNNING';mode=$mode;started_at=[datetime]::UtcNow.ToString('o');commit=$env:GITHUB_SHA;repository=$env:GITHUB_REPOSITORY;source_zip_sha256=$zipHash;source_files=121;baseline=$baseline;macos=@($os);architecture=[Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString();process_architecture=[Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString();image_os=$env:ImageOS;image_version=$env:ImageVersion;pwsh=$PSVersionTable.PSVersion.ToString();git=(& git --version);pester='5.9.1';pester_nupkg_sha256='8dd4060fc3bc895f05bd655e4ab82abe346de54a4e6415dfb727cc8378672b69';models=0;artifact_uploads=0;cache_uploads=0;packages=@();corpora=@();native_callbacks='NOT_RUN'}
 Write-Output ('ENVIRONMENT_JSON '+($summary|ConvertTo-Json -Depth 5 -Compress))
 $progress=Join-Path $root 'suites.txt';$env:CF_MACOS_PROGRESS=$progress
 $runner=Join-Path $repo 'tests/run-contract-tests.ps1';$lines=[IO.File]::ReadAllLines($runner);$line=0
@@ -37,19 +39,17 @@ if(-not $line){throw 'SUITE_OBSERVATION_POINT_MISSING'}
 $expected=@([regex]::Matches([IO.File]::ReadAllText($runner),'(?m)^Invoke-ContractScript "([^"]+)"')|ForEach-Object{$_.Groups[1].Value})
 if($expected.Count -ne 35){throw 'WRONG_EXPECTED_SUITE_COUNT'}
 try {
-    $bp=Set-PSBreakpoint -Script $runner -Line $line -Action {[IO.File]::AppendAllText($env:CF_MACOS_PROGRESS,$Name+[Environment]::NewLine);[Console]::WriteLine([datetime]::UtcNow.ToString('o')+' SUITE '+$Name)}
-    $storageBp=Set-PSBreakpoint -Script (Join-Path $repo 'tests/storage.tests.ps1') -Line 17 -Action {
-        try {
-            $read=Read-ControlFlowRun $r $run.run_path;$capture=@($read.evidence.checks)[-1];$gate=Test-ControlFlowGate $r $run.run_path Completion
-            $diagnostic=[ordered]@{capture_status=$capture.status;timed_out=$capture.timed_out;exit_code=$capture.exit_code;process_incomplete=$capture.process_incomplete;gate_status=$gate.status;gate_reasons=$gate.reasons;tmpdir=$env:TMPDIR;runtime_temp=[IO.Path]::GetTempPath()}
-            foreach($name in @('stdout','stderr')){$ref=$capture[$name+'_ref'];$value=[Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes((Join-Path $run.run_path $ref.path)));$diagnostic[$name]=$value.Substring(0,[Math]::Min(2048,$value.Length))}
-            [Console]::WriteLine('STORAGE_DIAGNOSTIC_JSON '+($diagnostic|ConvertTo-Json -Depth 5 -Compress))
-        }catch{[Console]::WriteLine('STORAGE_DIAGNOSTIC_ERROR '+$_.Exception.Message)}
-    }
-    try {$r=Invoke-Pester -Path (Join-Path $repo 'tests/controlflow-contract.Tests.ps1') -Output Detailed -PassThru} finally {Remove-PSBreakpoint -Breakpoint $bp,$storageBp}
-    $actual=@(Get-Content -LiteralPath $progress)
-    $summary.pester_result=@{status=$r.Result;passed=$r.PassedCount;failed=$r.FailedCount;skipped=$r.SkippedCount;not_run=$r.NotRunCount;suites=$actual}
-    if($r.Result -cne 'Passed' -or $r.PassedCount -ne 1 -or $r.FailedCount -ne 0 -or $r.SkippedCount -ne 0 -or $r.NotRunCount -ne 0 -or $actual.Count -ne 35 -or @(Compare-Object $expected $actual -SyncWindow 0).Count){throw 'ORIGINAL_PESTER_WRAPPER_FAILED_OR_INCOMPLETE'}
+    if($mode -ceq 'diagnostic'){
+        . (Join-Path $PSScriptRoot 'Invoke-CleanupDiagnostic.ps1')
+        $diagnostic=Invoke-CleanupDiagnostic -Repo $repo
+        $summary.diagnostic=$diagnostic
+        if($diagnostic.status -cne 'PASS'){throw 'TARGETED_DIAGNOSTIC_FAILED_OR_INCONCLUSIVE'}
+    }else{
+        if($env:CF_DIAGNOSTIC_SOURCE -cne $zipHash -or $env:CF_DIAGNOSTIC_COMMIT -cne $env:GITHUB_SHA -or $env:CF_DIAGNOSTIC_PASSED -cne 'true'){throw 'SUCCESSFUL_SAME_CANDIDATE_DIAGNOSTIC_REQUIRED'}
+        if(@(Get-PSBreakpoint).Count){throw 'AGGREGATE_MUST_HAVE_NO_DEBUG_BREAKPOINTS'}
+        $r=Invoke-Pester -Path (Join-Path $repo 'tests/controlflow-contract.Tests.ps1') -Output Detailed -PassThru
+        $summary.pester_result=@{status=$r.Result;passed=$r.PassedCount;failed=$r.FailedCount;skipped=$r.SkippedCount;not_run=$r.NotRunCount;registered_suites=$expected;execution_evidence='Unchanged original wrapper and frozen runner with35 unconditional calls; no debugger observers'}
+        if($r.Result -cne 'Passed' -or $r.PassedCount -ne 1 -or $r.FailedCount -ne 0 -or $r.SkippedCount -ne 0 -or $r.NotRunCount -ne 0){throw 'ORIGINAL_PESTER_WRAPPER_FAILED_OR_INCOMPLETE'}
     foreach($suite in @('Pilot','Release')){
         $global:LASTEXITCODE=0
         & (Join-Path $repo 'evals/run-e2e.ps1') -RepoRoot $repo -Suite $suite -ValidateOnly
@@ -85,7 +85,14 @@ try {
         } finally {$archive.Dispose()}
         $summary.packages+=@{flavor=$flavor;files=$count;sha256=$packageHash;entry_bytes_match=$true;inventory=$inventory}
     }
+    }
     Test-SourceSnapshot -Root $repo -ManifestPath $manifestPath
     $summary.status='PASS';$summary.source_unchanged=$true
+    if($mode -ceq 'diagnostic'){
+        [IO.File]::AppendAllText($env:GITHUB_OUTPUT,"diagnostic_passed=true`nsource_sha256=$zipHash`ncommit=$($env:GITHUB_SHA)`n",[Text.UTF8Encoding]::new($false))
+    }
 } catch {$summary.status='FAIL';$summary.error=$_.Exception.Message;throw}
-finally {$summary.finished_at=[datetime]::UtcNow.ToString('o');Write-Output ('FINAL_RESULT_JSON '+($summary|ConvertTo-Json -Depth 12 -Compress))}
+finally {
+    if(-not $summary.Contains('source_unchanged')){try{Test-SourceSnapshot -Root $repo -ManifestPath $manifestPath;$summary.source_unchanged=$true}catch{$summary.source_unchanged=$false;$summary.source_error=$_.Exception.Message}}
+    $summary.finished_at=[datetime]::UtcNow.ToString('o');Write-Output ('FINAL_RESULT_JSON '+($summary|ConvertTo-Json -Depth 14 -Compress))
+}

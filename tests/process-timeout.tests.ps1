@@ -1,6 +1,30 @@
 . (Join-Path $PSScriptRoot 'core-test-helpers.ps1')
 LoadCore
 . (Join-Path $PSScriptRoot '../scripts/lib/Git.ps1')
+# The shared stream-drain budget may already be exhausted before verification.
+# Exercise the actual cleanup blocks with controlled observations, without OS signals.
+$cleanupAst=[Management.Automation.Language.Parser]::ParseFile((Join-Path $script:CoreRoot 'scripts/lib/Git.ps1'),[ref]$null,[ref]$null)
+$cleanupFunction=@($cleanupAst.FindAll({param($n)$n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -ceq 'Invoke-CFProcess'},$true))[0]
+$cleanupCases=@(@{ticks=749;mode='absent';prior=$true;expected=$true},@{ticks=750;mode='absent';prior=$true;expected=$true},@{ticks=751;mode='absent';prior=$true;expected=$true},@{ticks=750;mode='present';prior=$true;expected=$false},@{ticks=750;mode='error';prior=$true;expected=$false},@{ticks=750;mode='absent';prior=$false;expected=$false})
+foreach($cleanupKind in @('job','group')){
+    $cleanupNodes=@($cleanupFunction.FindAll({param($n)$n -is [Management.Automation.Language.IfStatementAst] -and $n.Clauses[0].Item1.Extent.Text -ceq ('$'+$cleanupKind) -and $n.Extent.Text.Contains('$empty=$false') -and $n.Extent.Text.Contains('$drain.ElapsedMilliseconds')},$true))
+    if($cleanupNodes.Count -ne 1){throw "Cleanup verification block is ambiguous: $cleanupKind"}
+    $cleanupBlock=[scriptblock]::Create($cleanupNodes[0].Extent.Text)
+    foreach($cleanupCase in $cleanupCases){
+        $cleanupObserved=& {
+            param($code,$kind,$case)
+            $script:CFTestCleanupProbeCount=0;$script:CFTestCleanupProbeMode=$case.mode
+            function Get-CFTestPresence {$script:CFTestCleanupProbeCount++;if($script:CFTestCleanupProbeMode -ceq 'error'){throw 'OBSERVATION_DENIED'};return ($script:CFTestCleanupProbeMode -ceq 'present')}
+            function Invoke-CFGroupSignal {param($GroupId,$Signal)Get-CFTestPresence}
+            $job=$null;$group=$false
+            if($kind -ceq 'group'){$group=$true}else{$job=[pscustomobject]@{};$job|Add-Member -MemberType ScriptMethod -Name IsEmpty -Value {-not(Get-CFTestPresence)}}
+            $p=[pscustomobject]@{Id=424242};$drain=[pscustomobject]@{ElapsedMilliseconds=$case.ticks};$cleanupOk=$case.prior
+            . $code
+            @{cleanup_ok=$cleanupOk;probes=$script:CFTestCleanupProbeCount}
+        } $cleanupBlock $cleanupKind $cleanupCase
+        Assert ($cleanupObserved.probes -eq 1 -and $cleanupObserved.cleanup_ok -eq $cleanupCase.expected) "cleanup $cleanupKind observes once at elapsed=$($cleanupCase.ticks), presence=$($cleanupCase.mode), prior=$($cleanupCase.prior)"
+    }
+}
 Assert ($null -ne (Get-Command Resolve-CFGroupSignalResult -ErrorAction SilentlyContinue)) 'group signal distinguishes absence from denied observation'
 Assert ((Resolve-CFGroupSignalResult 0 0) -eq $true) 'successful signal means group exists'
 Assert ((Resolve-CFGroupSignalResult -1 3) -eq $false) 'ESRCH confirms group absent'

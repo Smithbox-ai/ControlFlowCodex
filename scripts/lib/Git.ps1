@@ -182,18 +182,20 @@ $child.WaitForExit();$writer.WriteLine([string]$child.Id);$writer.Dispose();[voi
         if(-not $p.HasExited -or -not $outTask.IsCompleted -or -not $errTask.IsCompleted -or ($null -ne $inputTask -and -not $inputTask.IsCompleted)){$timedOut=$true}
         if($job){
             $empty=$false
-            while($drain.ElapsedMilliseconds -lt 750){
+            do {
                 try{if($job.IsEmpty()){$empty=$true;break}}catch{$cleanupOk=$false;break}
+                if($drain.ElapsedMilliseconds -ge 750){break}
                 [Threading.Thread]::Sleep(10)
-            }
+            } while($drain.ElapsedMilliseconds -lt 750)
             if(-not $empty){$cleanupOk=$false}
         }
         if($group){
             $empty=$false
-            while($drain.ElapsedMilliseconds -lt 750){
+            do {
                 try{if(-not (Invoke-CFGroupSignal $p.Id 0)){$empty=$true;break}}catch{$cleanupOk=$false;break}
+                if($drain.ElapsedMilliseconds -ge 750){break}
                 [Threading.Thread]::Sleep(10)
-            }
+            } while($drain.ElapsedMilliseconds -lt 750)
             if(-not $empty){$cleanupOk=$false}
         }
         if(-not $cleanupOk){throw 'PROCESS_CLEANUP_UNVERIFIABLE'}
