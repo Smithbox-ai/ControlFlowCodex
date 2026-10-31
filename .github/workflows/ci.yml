@@ -22,7 +22,7 @@ jobs:
         shell: pwsh
         run: |
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-          Install-Module -Name Pester -MinimumVersion 5.0 -Scope CurrentUser -Force -AllowClobber
+          Install-Module -Name Pester -RequiredVersion 5.9.1 -Scope CurrentUser -Force -AllowClobber
       - name: Run structural contract suite
         shell: pwsh
         run: ./tests/run-contract-tests.ps1 -UsePester
@@ -47,7 +47,7 @@ jobs:
         shell: pwsh
         run: |
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-          Install-Module -Name Pester -MinimumVersion 5.0 -Scope CurrentUser -Force -AllowClobber
+          Install-Module -Name Pester -RequiredVersion 5.9.1 -Scope CurrentUser -Force -AllowClobber
       - name: Run structural contract suite
         # The default /var temporary path traverses a symlink rejected by the installer.
         env:

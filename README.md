@@ -10,6 +10,38 @@ claiming production readiness.
 
 ## Use
 
+### First run
+
+1. Install from a trusted checkout with `pwsh -NoProfile -File scripts/install.ps1 -Force`.
+   Enable the plugin in your Codex host. Review and trust its current hook definition
+   in the host before relying on automatic enforcement; installation alone does not
+   establish trust. See [hook setup and limitations](docs/hooks.md).
+2. From the checkout, run `pwsh -NoProfile -File scripts/doctor.ps1 -RepoRoot <repo>`.
+   This read-only diagnostic checks the repository and storage path configuration.
+   It does not establish host activation, hook trust, callback delivery or storage
+   write access; those remain explicitly unverified.
+3. In Codex, request a repository task using
+   `$controlflow-codex:controlflow <your task>`. The agent chooses a tier and, for
+   non-trivial work, prepares a contract, captures checks and evaluates completion.
+   If a trusted callback or native session identity is unavailable, it uses manual
+   fallback and runs the completion gate directly.
+4. Read the result and evidence. For an existing run, use
+   `pwsh -NoProfile -File scripts/explain-gate.ps1 -RepoRoot <repo> -RunPath <run>`
+   for an explanatory view; `completion-gate.ps1` remains the machine-readable JSON
+   interface. Both use exits 0/1/2 for PASS/FAIL/ERROR.
+
+Illustrative outcomes, not recorded runs:
+
+- **SMALL / PASS:** the agent records successful checks and coverage; the completion
+  gate returns `PASS`. With manual fallback, the agent records completion and reports
+  that automatic Stop enforcement was not verified.
+- **BLOCKED / manual fallback:** a missing check, inaccessible evidence or unanswered
+  question leaves the task incomplete. The agent reports the reason and next action;
+  it does not call the task done. Resume an interrupted or blocked run only after
+  the user's explicit decision.
+
+The detailed lifecycle is in [execution](skills/controlflow/references/execution.md).
+
 For native plugin text invocation, use `$controlflow-codex:controlflow` with a
 repository task. Short aliases such as `$controlflow` require host support.
 Native plugins namespace skill names and explicit-only skills may be hidden
@@ -75,6 +107,23 @@ invalidate checks and final review. Staging or committing identical content
 preserves its identity. The ledger verifies provenance, freshness, and coverage;
 it cannot establish the semantic truth of a model's `PROVEN` assessment.
 
+Checks may declare `inputs` as literal file paths relative to the repository root,
+including ignored files. Their content hashes are checked before and after the
+command and again at the gate; file contents are not stored in the ledger. Declare
+every such file that can affect the check. Directories, links, glob patterns and
+paths outside the repository are not supported. Input paths use `/` separators;
+literal backslashes in file names are unsupported on all platforms. Undeclared ignored files, external
+files, environment variables and other external dependencies are not tracked, so
+their changes require a fresh check; a gate cannot infer them automatically.
+For example, a check whose behavior depends on an ignored local configuration can
+include `"inputs": ["config/local.json"]` in its contract.
+
+Check timeouts cover command execution and output collection. On Unix, cleanup
+uses a dedicated process group; a process that deliberately leaves that group
+can escape observation and cleanup. Run only checks whose background processes
+remain in the group and complete before the command exits. The process group is
+not a security boundary.
+
 The delivery scripts `completion-gate.ps1` and `commit-gate.ps1` emit JSON
 `status: PASS | FAIL | ERROR` with exits `0 | 1 | 2`. Missing or incomplete Git
 observations are ERROR/UNVERIFIABLE. For a required commit, completion also
@@ -116,6 +165,8 @@ pwsh -NoProfile -File scripts/package.ps1
 ownership and containment, stages the shared inventory, and rolls back a failed
 replacement or marketplace update. Other marketplace entries are preserved.
 Release smoke extracts the ZIP and installs **that extracted source**.
+See [release procedure](docs/release.md) for artifact publication and the stable
+release evidence gate.
 
 ## Development and evaluation
 
@@ -144,3 +195,18 @@ Do not reuse a v2 verdict as v3 evidence. See
 [migration and rollback](docs/migration-v3.md).
 
 MIT — see [LICENSE](LICENSE).
+
+## V4 opt-in candidate
+
+Package `4.0.0-rc.1` adds separate contract/runtime `4.0.0` while v3 remains
+default. V4 fixes phase order, exact artifact inputs, original foreign ownership
+across planning epochs, manual decision provenance, QA baseline/recheck and
+source-bound review packets. Required verified human assurance blocks because no
+trusted verifier is provided. Full routes remain compact; safe docs can use light.
+
+Read [runtime interfaces](docs/v4-runtime.md), [migration](docs/migration-v4.md)
+and [architecture policy](docs/architecture-policy.md). No new software is
+automatically installed. Known report formats do not prove semantic correctness.
+Real host callbacks, complete platform-matrix evidence and isolated paired E2E
+remain separate acceptance gates. No production-readiness or superiority claim
+is made by this opt-in candidate.

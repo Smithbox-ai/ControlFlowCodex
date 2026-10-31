@@ -7,7 +7,7 @@ function Read-CFRunHeader([string]$RepoRoot,[string]$RunPath,[string]$SessionId,
     $task=$location.task_id;$run=$location.run_id
     $statePath=[IO.Path]::Combine($RunPath,'state.json');Assert-CFNoLinks $statePath
     $state=ConvertFrom-Json -InputObject ([IO.File]::ReadAllText($statePath,$script:Utf8)) -AsHashtable -Depth 80
-    if($state.schema_version -cne '3.0.0' -or $state.task_id -cne $task -or $state.run_id -cne $run -or $state.revision -lt 0){throw 'INVALID_RUN_STATE'}
+    if($state.schema_version -cnotin @('3.0.0','4.0.0') -or $state.task_id -cne $task -or $state.run_id -cne $run -or $state.revision -lt 0){throw 'INVALID_RUN_STATE'}
     foreach($key in @('worktree_realpath','git_dir_realpath')){if($state.binding[$key] -cne $Identity[$key]){throw 'WORKTREE_BINDING_MISMATCH'}}
     if($SessionId -and $state.binding.session_id -cne $SessionId){throw 'SESSION_BINDING_MISMATCH'}
     $paths=Get-ControlFlowStoragePaths $RepoRoot $task $state.binding.session_id
@@ -30,8 +30,9 @@ function Resolve-CFActiveHeader([string]$RepoRoot,[string]$SessionId) {
     if($attributes -band [IO.FileAttributes]::Directory){throw 'INVALID_ACTIVE_POINTER'}
     Get-CFStorageContext $identity.worktree_realpath $SessionId -Identity $identity|Out-Null;Assert-CFNoLinks $p
     $pointer=ConvertFrom-Json -InputObject ([IO.File]::ReadAllText($p,$script:Utf8)) -AsHashtable -Depth 80
-    if($pointer.schema_version -cne '3.0.0' -or $pointer.binding.session_id -cne $SessionId){throw 'INVALID_ACTIVE_POINTER'}
+    if($pointer.schema_version -cnotin @('3.0.0','4.0.0') -or $pointer.binding.session_id -cne $SessionId){throw 'INVALID_ACTIVE_POINTER'}
     $header=Read-CFRunHeader $identity.worktree_realpath $pointer.run_path $SessionId $identity
+    if($pointer.schema_version -cne $header.state.schema_version){throw 'RUNTIME_VERSION_MISMATCH'}
     if($pointer.run_id -cne $header.state.run_id -or $pointer.task_id -cne $header.state.task_id){throw 'ACTIVE_POINTER_BINDING_MISMATCH'}
     foreach($key in @('worktree_realpath','git_dir_realpath','session_id')){if($pointer.binding[$key] -cne $header.state.binding[$key]){throw 'ACTIVE_POINTER_BINDING_MISMATCH'}}
     return $header
@@ -54,8 +55,12 @@ function Request-ControlFlowInterrupt {
     $state=$header.state;$runPath=$header.run_path
     # Never silently repair a corrupt notification or consult potentially huge
     # evidence outputs on the native three-second interrupt path.
-    Read-CFPendingInterrupt $runPath $state|Out-Null
+    $existing=Read-CFPendingInterrupt $runPath $state
     $notice=[ordered]@{schema_version='3.0.0';interrupt_id=[guid]::NewGuid().ToString('N');task_id=$state.task_id;run_id=$state.run_id;binding=$state.binding;reason='INTERRUPT';native_evidence=@{event='Interrupt';turn_id=$(if($TurnId){$TurnId}else{$null});received_at=[DateTime]::UtcNow.ToString('o')}}
+    if($state.schema_version -ceq '4.0.0'){
+        $unacknowledged=$null -ne $existing -and $existing.interrupt_id -cne $state.acknowledged_interrupt_id
+        $notice.observed_source_digest=if($state.stop_source_digest){$state.stop_source_digest}elseif($unacknowledged){$existing.observed_source_digest}else{$state.last_observed_source_digest}
+    }
     $text=ConvertTo-Json -InputObject $notice -Depth 20 -Compress
     if(-not (Test-Json -Json $text -SchemaFile (Join-Path $script:CoreModuleRoot '../schemas/pending-interrupt.schema.json') -ErrorAction Stop)){throw 'INVALID_INTERRUPT_NOTIFICATION'}
     $target=[IO.Path]::Combine($runPath,'pending-interrupt.json');Assert-CFNoLinks $target

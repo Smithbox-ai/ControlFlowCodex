@@ -94,12 +94,13 @@ function Assert-ControlFlowNoObsoleteFiles([string]$SourceRoot, [Collections.IDi
     }
 }
 
-function Get-ControlFlowPackageFiles([string]$SourceRoot) {
+function Get-ControlFlowPackageFiles([string]$SourceRoot, [ValidateSet('Universal','NativeLegacy', IgnoreCase=$false)][string]$Flavor = 'Universal') {
     $root = Resolve-ControlFlowPath $SourceRoot
     $inventory = Get-ControlFlowInventory $root
     Assert-ControlFlowNoObsoleteFiles $root $inventory
     $files = [Collections.Generic.SortedSet[string]]::new([StringComparer]::Ordinal)
     foreach ($entry in @($inventory.required) + @($inventory.optional)) {
+        if ($Flavor -ceq 'NativeLegacy' -and $entry -ceq 'plugin.json') { continue }
         $path = Assert-ControlFlowContained (Join-Path $root $entry) $root
         if (-not (Test-Path -LiteralPath $path)) {
             if ($entry -in $inventory.required) { throw "Required package item is missing: $entry" }
@@ -131,26 +132,55 @@ function ConvertTo-ControlFlowCanonical([object]$Value) {
     return $Value
 }
 
-function Assert-ControlFlowPackage([string]$SourceRoot, [string]$Version) {
+function Assert-ControlFlowPackage([string]$SourceRoot, [string]$Version, [ValidateSet('Universal','NativeLegacy', IgnoreCase=$false)][string]$Flavor = 'Universal') {
     $root = Resolve-ControlFlowPath $SourceRoot
-    $null = Get-ControlFlowPackageFiles $root
-    $portable = Get-Content -LiteralPath (Join-Path $root 'plugin.json') -Raw | ConvertFrom-Json -AsHashtable
+    $null = Get-ControlFlowPackageFiles $root -Flavor $Flavor
     $compat = Get-Content -LiteralPath (Join-Path $root '.codex-plugin/plugin.json') -Raw | ConvertFrom-Json -AsHashtable
-    if ($portable.name -notmatch '^[a-z0-9][a-z0-9-]*$' -or $portable.version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$') { throw 'Invalid portable plugin identity/version' }
-    if ($portable.name -cne $compat.name -or $portable.version -cne $compat.version) { throw 'Portable/compatibility manifest identity mismatch' }
     if (-not $compat.ContainsKey('skills') -or $compat.skills -cnotin @('./skills', './skills/')) { throw 'Compatibility skills must point to the portable skills directory' }
+    if ($Flavor -ceq 'Universal') {
+        $portable = Get-Content -LiteralPath (Join-Path $root 'plugin.json') -Raw | ConvertFrom-Json -AsHashtable
+        if ($portable.name -cne $compat.name -or $portable.version -cne $compat.version) { throw 'Portable/compatibility manifest identity mismatch' }
+        if (-not $portable.ContainsKey('extensions') -or -not $portable.extensions.ContainsKey('com.openai')) { throw 'Missing extensions.com.openai settings' }
+        $openai = $portable.extensions['com.openai']
+        foreach ($key in $openai.Keys) {
+            if (-not $compat.ContainsKey($key)) { throw "Compatibility manifest lacks OpenAI setting: $key" }
+            $a = ConvertTo-ControlFlowCanonical $openai[$key] | ConvertTo-Json -Depth 100 -Compress
+            $b = ConvertTo-ControlFlowCanonical $compat[$key] | ConvertTo-Json -Depth 100 -Compress
+            if ($a -cne $b) { throw "Portable/compatibility settings differ: $key" }
+        }
+        foreach ($key in @('interface', 'hooks')) {
+            if ($compat.ContainsKey($key) -and -not $openai.ContainsKey($key)) { throw "Portable extension omits compatibility setting: $key" }
+        }
+    } else {
+        if ($compat.name -cne 'controlflow-codex') { throw 'NativeLegacy is restricted to ControlFlowCodex' }
+        if (Test-Path -LiteralPath (Join-Path $root 'plugin.json')) { throw 'NativeLegacy must not contain root AgentPlugin plugin.json' }
+        Assert-ControlFlowTree $root
+        # Legacy discovery is recursive. Bound this flavor to the existing four
+        # skill entries and no MCP/apps capabilities, regardless of defaults.
+        foreach ($key in $compat.Keys) {
+            if ($key -cnotin @('name','version','description','author','homepage','repository','license','keywords','skills','interface','hooks')) { throw "NativeLegacy does not allow manifest capability/key: $key" }
+        }
+        if (-not $compat.ContainsKey('hooks') -or $compat.hooks -cne './hooks/hooks.json') { throw 'NativeLegacy requires the existing hooks/hooks.json declaration' }
+        $wanted = @('controlflow','controlflow-plan','controlflow-review','controlflow-verify')
+        $skillRoot = Join-Path $root 'skills'
+        $actual = @(Get-ChildItem -LiteralPath $skillRoot -Directory -Force | ForEach-Object Name)
+        if (@(Compare-Object $wanted $actual -CaseSensitive).Count) { throw 'NativeLegacy requires exactly the four existing skill directories' }
+        foreach ($extraRoot in @('commands','.codex-plugin/migrated-command-skills')) {
+            if (Test-Path -LiteralPath (Join-Path $root $extraRoot)) { throw "NativeLegacy does not allow additional skill/command roots: $extraRoot" }
+        }
+        $skillFiles = @(Get-ChildItem -LiteralPath $root -File -Force -Recurse | Where-Object Name -IEQ 'SKILL.md')
+        if ($skillFiles.Count -ne 4) { throw 'NativeLegacy does not allow nested or extra SKILL.md entries' }
+        foreach ($file in $skillFiles) {
+            if ($file.Name -cne 'SKILL.md' -or $file.Directory.Parent.FullName -cne $skillRoot) { throw 'NativeLegacy requires direct skill entry paths' }
+        }
+        foreach ($file in Get-ChildItem -LiteralPath $root -File -Force -Recurse) {
+            if ($file.Name -match '^(?:\.?mcp(?:[.-].*)?|mcpServers.*|\.?apps?\.json)$') { throw "NativeLegacy does not allow MCP/apps configs: $($file.Name)" }
+        }
+        $portable = $compat
+        $openai = $compat
+    }
+    if ($portable.name -notmatch '^[a-z0-9][a-z0-9-]*$' -or $portable.version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$') { throw 'Invalid plugin identity/version' }
     if ($Version -and $portable.version -cne $Version) { throw "Requested version $Version differs from manifest $($portable.version)" }
-    if (-not $portable.ContainsKey('extensions') -or -not $portable.extensions.ContainsKey('com.openai')) { throw 'Missing extensions.com.openai settings' }
-    $openai = $portable.extensions['com.openai']
-    foreach ($key in $openai.Keys) {
-        if (-not $compat.ContainsKey($key)) { throw "Compatibility manifest lacks OpenAI setting: $key" }
-        $a = ConvertTo-ControlFlowCanonical $openai[$key] | ConvertTo-Json -Depth 100 -Compress
-        $b = ConvertTo-ControlFlowCanonical $compat[$key] | ConvertTo-Json -Depth 100 -Compress
-        if ($a -cne $b) { throw "Portable/compatibility settings differ: $key" }
-    }
-    foreach ($key in @('interface', 'hooks')) {
-        if ($compat.ContainsKey($key) -and -not $openai.ContainsKey($key)) { throw "Portable extension omits compatibility setting: $key" }
-    }
     foreach ($skill in Get-ChildItem -LiteralPath (Join-Path $root 'skills') -Directory) {
         if (-not (Test-Path -LiteralPath (Join-Path $skill.FullName 'SKILL.md') -PathType Leaf)) { throw "Skill entry is missing SKILL.md: $($skill.Name)" }
     }
@@ -167,19 +197,19 @@ function Assert-ControlFlowPackage([string]$SourceRoot, [string]$Version) {
     return $portable
 }
 
-function Copy-ControlFlowPackage([string]$SourceRoot, [string]$Destination) {
+function Copy-ControlFlowPackage([string]$SourceRoot, [string]$Destination, [ValidateSet('Universal','NativeLegacy', IgnoreCase=$false)][string]$Flavor = 'Universal') {
     $root = Resolve-ControlFlowPath $SourceRoot
     $dest = Resolve-ControlFlowPath $Destination
     if ($root.Equals($dest, $script:PathComparison) -or (Test-ControlFlowContained $dest $root) -or (Test-ControlFlowContained $root $dest)) { throw 'Source and package destination overlap' }
-    $null = Assert-ControlFlowPackage $root
+    $null = Assert-ControlFlowPackage $root -Flavor $Flavor
     if (Test-Path -LiteralPath $dest) { throw "Package destination already exists: $dest" }
     New-Item -ItemType Directory -Path $dest -Force | Out-Null
-    foreach ($relative in Get-ControlFlowPackageFiles $root) {
+    foreach ($relative in Get-ControlFlowPackageFiles $root -Flavor $Flavor) {
         $target = Assert-ControlFlowContained (Join-Path $dest $relative) $dest
         New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
         Copy-Item -LiteralPath (Join-Path $root $relative) -Destination $target
     }
-    $null = Assert-ControlFlowPackage $dest
+    $null = Assert-ControlFlowPackage $dest -Flavor $Flavor
 }
 
 Export-ModuleMember -Function Resolve-ControlFlowPath, Test-ControlFlowContained, Assert-ControlFlowContained, Assert-ControlFlowTree, Remove-ControlFlowTree, Move-ControlFlowTree, Get-ControlFlowInventory, Assert-ControlFlowNoObsoleteFiles, Get-ControlFlowPackageFiles, Assert-ControlFlowPackage, Copy-ControlFlowPackage

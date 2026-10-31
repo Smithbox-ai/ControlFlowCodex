@@ -13,7 +13,7 @@ function Get-ControlFlowContinuationSignature {
 function Get-ControlFlowStopPolicy {
     param([AllowNull()]$State,[AllowNull()]$Gate)
     if ($null -eq $State) { return @{action='UNMANAGED';done=$false} }
-    $lawful = @('CLARIFICATION','PERMISSION_DENIED','CANCELLED','PLAN_MODE','BLOCKED','INTERRUPTED')
+    $lawful = @('CLARIFICATION','PERMISSION_DENIED','CANCELLED','PLAN_MODE','BLOCKED','INTERRUPTED','HUMAN_WAIT')
     if ($State.status -in $lawful) {
         if ($null -eq $State.structured_reason -or [string]::IsNullOrWhiteSpace([string]$State.structured_reason.evidence)) {
             return @{action='UNVERIFIABLE';done=$false;reason='STOP_EVIDENCE_MISSING'}

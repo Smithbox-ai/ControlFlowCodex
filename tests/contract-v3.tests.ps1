@@ -8,6 +8,13 @@ $p=Contract $r
 $c=Read-ControlFlowContract -Path $p
 Assert ($c.contract.task_id -eq 'test-task') 'valid v3 contract read'
 $v=Get-Content $p -Raw|ConvertFrom-Json -AsHashtable
+$v.checks[0].inputs=@('local/config.json');[IO.File]::WriteAllText($p,($v|ConvertTo-Json -Depth 20))
+Assert ((Read-ControlFlowContract $p).contract.checks[0].inputs[0] -eq 'local/config.json') 'relative literal input file is accepted'
+foreach($bad in @('../outside','/absolute','C:/outside','a/../b','a//b','a/./b','a\b','glob/*.json')){
+    $v.checks[0].inputs=@($bad);[IO.File]::WriteAllText($p,($v|ConvertTo-Json -Depth 20))
+    Throws {Read-ControlFlowContract $p} ('unsafe input path rejected: '+$bad)
+}
+$v.checks[0].Remove('inputs')
 $v.checks[0].criteria=@('missing');[IO.File]::WriteAllText($p,($v|ConvertTo-Json -Depth 20))
 Throws {Read-ControlFlowContract $p} 'invalid criterion reference rejected'
 $v.checks[0].criteria=@('C1');$v.phases=@(@{id='P1';depends_on=@('P2')},@{id='P2';depends_on=@('P1')});[IO.File]::WriteAllText($p,($v|ConvertTo-Json -Depth 20))

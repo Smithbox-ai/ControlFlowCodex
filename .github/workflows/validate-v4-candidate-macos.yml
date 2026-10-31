@@ -1,0 +1,25 @@
+name: validate-v4-candidate-macos
+
+on:
+  push:
+    branches: [validation/v4-macos]
+
+permissions:
+  contents: read
+
+jobs:
+  candidate-macos:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - name: Checkout immutable validation commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          lfs: false
+          submodules: false
+      - name: Validate frozen candidate (no models or artifact storage)
+        shell: pwsh
+        run: ./.validation/run-macos-validation.ps1

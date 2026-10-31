@@ -7,7 +7,7 @@ Import-Module (Join-Path $repoRoot 'scripts/ControlFlow.Core.psm1') -Force -Disa
 # Exact shipped entries prevent the old Markdown/sidecar workflow from quietly
 # returning alongside the current machine-readable v3 contract.
 $templates=@(Get-ChildItem -LiteralPath $templateRoot -File -Recurse -Force|ForEach-Object {[IO.Path]::GetRelativePath($templateRoot,$_.FullName).Replace('\','/')})
-if(@(Compare-Object @('plan.meta.v3.json') $templates).Count){throw "Expected only the v3 metadata template, found: $($templates -join ', ')"}
+if(@(Compare-Object @('plan.meta.v3.json','plan.meta.v4.json') $templates).Count){throw "Expected versioned metadata templates, found: $($templates -join ', ')"}
 $examples=@(Get-ChildItem -LiteralPath $exampleRoot -File -Recurse -Force|ForEach-Object {[IO.Path]::GetRelativePath($exampleRoot,$_.FullName).Replace('\','/')})
 if(@(Compare-Object @('small-v3.meta.json') $examples).Count){throw "Expected only the v3 SMALL example, found: $($examples -join ', ')"}
 foreach($path in @((Join-Path $templateRoot 'plan.meta.v3.json'),(Join-Path $exampleRoot 'small-v3.meta.json'))){
@@ -17,5 +17,6 @@ foreach($path in @((Join-Path $templateRoot 'plan.meta.v3.json'),(Join-Path $exa
     $output=& (Join-Path $repoRoot 'scripts/validate-contract.ps1') -Path $path
     if($LASTEXITCODE -ne 0 -or ($output|ConvertFrom-Json).status -cne 'PASS'){throw "Shipped v3 contract failed its public validator: $path"}
 }
-Write-Output 'VALID v3-only template and SMALL example contracts'
+if((Read-ControlFlowContract (Join-Path $templateRoot 'plan.meta.v4.json')).contract.contract_status -cne 'draft'){throw 'V4 template must be draft'}
+Write-Output 'VALID versioned templates and v3 SMALL example contracts'
 $global:LASTEXITCODE=0

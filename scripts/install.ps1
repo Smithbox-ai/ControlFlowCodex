@@ -10,9 +10,12 @@ param(
     [string]$HomeRoot = $HOME,
     [string]$PluginName = 'controlflow-codex',
     [switch]$Uninstall,
-    [switch]$Force
+    [switch]$Force,
+    [ValidateSet('Universal','NativeLegacy', IgnoreCase=$false)][string]$Flavor = 'Universal',
+    [switch]$DryRun
 )
 $ErrorActionPreference = 'Stop'
+$flavorExplicit = $PSBoundParameters.ContainsKey('Flavor')
 Import-Module (Join-Path $PSScriptRoot 'ControlFlow.Package.psm1') -Force
 
 if ($PluginName -cnotmatch '^[a-z0-9][a-z0-9_-]{0,63}$' -or $PluginName -match '^(con|prn|aux|nul|com[0-9]|lpt[0-9])$') { throw 'PluginName must be a lowercase safe single directory name (not a reserved device name)' }
@@ -38,6 +41,31 @@ if (Test-Path -LiteralPath $marketplacePath) {
     $marketplace = @{ name = 'local-personal'; interface = @{ displayName = 'Local Personal Plugins' }; plugins = @() }
 }
 
+$sourceManifestPath = if ($Flavor -ceq 'NativeLegacy') { '.codex-plugin/plugin.json' } else { 'plugin.json' }
+$sourceManifest = Get-Content -LiteralPath (Join-Path $sourceRoot $sourceManifestPath) -Raw | ConvertFrom-Json -AsHashtable
+if (-not $sourceManifest.ContainsKey('name') -or $sourceManifest.name -cne 'controlflow-codex') { throw 'Source package has an invalid ControlFlow identity' }
+if (-not $Uninstall) { $null = Assert-ControlFlowPackage $sourceRoot -Flavor $Flavor }
+function Assert-ExistingInstallTarget {
+    if (Test-Path -LiteralPath $target) {
+        if (-not (Test-Path -LiteralPath $target -PathType Container)) { throw 'Existing plugin target must be a directory' }
+        Assert-ControlFlowTree $target
+        $ownedManifest = Join-Path $target 'plugin.json'
+        $oldFlavor = 'Universal'
+        if (-not (Test-Path -LiteralPath $ownedManifest -PathType Leaf)) { $ownedManifest = Join-Path $target '.codex-plugin/plugin.json'; $oldFlavor = 'NativeLegacy' }
+        if (-not (Test-Path -LiteralPath $ownedManifest -PathType Leaf)) { throw 'Existing plugin target is not owned by a plugin manifest' }
+        $owned = Get-Content -LiteralPath $ownedManifest -Raw | ConvertFrom-Json -AsHashtable
+        if (-not $owned.ContainsKey('name') -or $owned.name -cne $sourceManifest.name) { throw 'Existing plugin target belongs to a different plugin' }
+        if (-not $Uninstall -and $oldFlavor -cne $Flavor -and -not $flavorExplicit) { throw 'Cross-flavor replacement requires explicit -Flavor and -Force' }
+        if (-not $Force) { throw 'Existing plugin target requires -Force to replace or uninstall' }
+    }
+}
+Assert-ExistingInstallTarget
+if ($DryRun) {
+    Write-Output "DRY RUN $Flavor $(if($Uninstall){'uninstall'}else{'install'}) $PluginName to $target; no changes; callbacks NOT_RUN"
+    $global:LASTEXITCODE = 0
+    return
+}
+
 # Keep this inode persistent: deleting a released lock could let a waiter lock
 # an old inode while another writer creates and locks a new one.
 New-Item -ItemType Directory -Path $marketplaceDir -Force | Out-Null
@@ -48,24 +76,13 @@ try {
     if ($marketplaceExistsNow -ne $hadMarketplace) { throw 'Marketplace changed during installer initialization; retry the operation' }
     if ($hadMarketplace -and [Convert]::ToBase64String([IO.File]::ReadAllBytes($marketplacePath)) -cne $marketplaceSnapshot) { throw 'Marketplace changed during installer initialization; retry the operation' }
 
-$sourceManifest = Get-Content -LiteralPath (Join-Path $sourceRoot 'plugin.json') -Raw | ConvertFrom-Json -AsHashtable
-if (-not $sourceManifest.ContainsKey('name') -or $sourceManifest.name -ne 'controlflow-codex') { throw 'Source package has an invalid ControlFlow identity' }
 $hadTarget = Test-Path -LiteralPath $target
-if ($hadTarget) {
-    if (-not (Test-Path -LiteralPath $target -PathType Container)) { throw 'Existing plugin target must be a directory' }
-    Assert-ControlFlowTree $target
-    $ownedManifest = Join-Path $target 'plugin.json'
-    if (-not (Test-Path -LiteralPath $ownedManifest -PathType Leaf)) { $ownedManifest = Join-Path $target '.codex-plugin/plugin.json' }
-    if (-not (Test-Path -LiteralPath $ownedManifest -PathType Leaf)) { throw 'Existing plugin target is not owned by a plugin manifest' }
-    $owned = Get-Content -LiteralPath $ownedManifest -Raw | ConvertFrom-Json -AsHashtable
-    if (-not $owned.ContainsKey('name') -or $owned.name -cne $sourceManifest.name) { throw 'Existing plugin target belongs to a different plugin' }
-    if (-not $Force) { throw 'Existing plugin target requires -Force to replace or uninstall' }
-}
+Assert-ExistingInstallTarget
 
 $marketplace.plugins = @($marketplace.plugins | Where-Object { $_.name -cne $PluginName })
 if (-not $Uninstall) {
     $marketplace.plugins += @{ name = $PluginName; source = @{ source = 'local'; path = "./plugins/$PluginName" }; policy = @{ installation = 'AVAILABLE'; authentication = 'ON_INSTALL' }; category = 'Coding' }
-    $null = Assert-ControlFlowPackage $sourceRoot
+    $null = Assert-ControlFlowPackage $sourceRoot -Flavor $Flavor
 }
 $id = [guid]::NewGuid().ToString('N')
 $stage = Assert-ControlFlowContained (Join-Path $pluginsDir ".$PluginName-stage-$id") $pluginsDir
@@ -77,7 +94,7 @@ $published = $false
 try {
     New-Item -ItemType Directory -Path $pluginsDir -Force | Out-Null
     New-Item -ItemType Directory -Path $marketplaceDir -Force | Out-Null
-    if (-not $Uninstall) { Copy-ControlFlowPackage $sourceRoot $stage }
+    if (-not $Uninstall) { Copy-ControlFlowPackage $sourceRoot $stage -Flavor $Flavor }
     # Prepare full registration before changing the installed directory.
     $marketplace | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $marketTemp -Encoding utf8
     if ($hadTarget) { Move-ControlFlowTree $target $backup $pluginsDir; $oldMoved = $true }
@@ -102,7 +119,7 @@ try {
 if ($published -and $oldMoved) {
     try { Remove-ControlFlowTree $backup $pluginsDir } catch { Write-Warning "Installed registration is valid; retained backup $backup ($($_.Exception.Message))" }
 }
-if ($Uninstall) { Write-Output "Uninstalled $PluginName" } else { Write-Output "Installed $PluginName to $target" }
+if ($Uninstall) { Write-Output "Uninstalled $PluginName (flavor $Flavor)" } else { Write-Output "Installed $PluginName to $target (flavor $Flavor; callbacks NOT_RUN)" }
 $global:LASTEXITCODE = 0
 } finally {
     $installationLock.Dispose()

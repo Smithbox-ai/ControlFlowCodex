@@ -12,12 +12,25 @@
     "evals",
     "README.md",
     "docs/hooks.md",
+    "docs/release.md",
     "docs/migration-v3.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE",
+    "plans/templates/plan.meta.v4.json",
+    "docs/migration-v4.md",
+    "docs/architecture-policy.md",
+    "docs/v4-runtime.md",
+    "evals/e2e-protocol.ps1",
+    "evals/V4-ADAPTER.md",
+    "tests/e2e-v4-adapter.tests.ps1",
+    "tests/e2e-v4-cli.tests.ps1"
   ],
-  "optional": ["hooks"],
-  "exclude": ["evals/results"],
+  "optional": [
+    "hooks"
+  ],
+  "exclude": [
+    "evals/results"
+  ],
   "obsolete": [
     "scripts/validate-plan.ps1",
     "scripts/detect-drift.ps1",

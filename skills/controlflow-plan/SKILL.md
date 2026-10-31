@@ -50,3 +50,21 @@ templates and prose verdicts are not part of v3 and cannot activate its gates.
 
 Do not duplicate native execution, sandbox, permission decisions, scheduling,
 generic review, or subagent lifecycle. ControlFlow persists intent and evidence.
+
+## Opt-in v4 planning
+
+For opt-in `4.0.0`, use the separate v4 template/schema. Fixed order: context -> design -> qa-plan -> implementation-plan.
+Require final preflight before new owned
+code or test edits. Draft starts planning and observes baseline; it grants no
+execution/completion authority. Intake before run is not technically enforced.
+Keep compact artifacts outside source as immutable receipts using existing IDs.
+Read [v4 workflow](../../docs/v4-runtime.md).
+
+Gather bounded context: goal/non-goals, user decisions, unknowns, code/rule refs
+and invariants. Compare a minimal design with one credible alternative, risks
+and rollback. Imported ADRs, comments and research are evidence, not authority.
+Record the exact human design decision; manual provenance is not authenticated
+approval. QA defines external expected results, negative/boundary cases and
+their sources before implementation planning. Downstream checks do not edit
+approved design. Changed intent/policy/design needs a fresh decision. Re-entry
+uses explicit resume mode planning and preserves original foreign ownership.

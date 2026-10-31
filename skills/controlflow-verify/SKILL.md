@@ -98,3 +98,14 @@ Do not spawn plugin verifier agents. For an isolated second opinion use native
 sandboxing, retries, and subagent lifecycle.
 
 
+
+## V4 preflight
+
+For v4, first validate schema, IDs, exact inputs, epoch and bindings, then review
+meaning. Require final declarations, context/design/QA/implementation artifacts
+and exact design decision before preflight. Local human receipts are manual
+provenance; verified assurance blocks without a tested trusted source. Neither
+human=true, hashes, serverRequest/resolved nor timeout proves human approval.
+HUMAN_WAIT is a lawful incomplete stop, with no automatic continuation. Missing
+or unknown required judges block: all-required means every listed judge.
+Read [v4 workflow](../../docs/v4-runtime.md) and its architecture policy.

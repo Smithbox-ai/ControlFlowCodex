@@ -26,7 +26,8 @@ try {
     Assert (Test-Path -LiteralPath $zip) 'Package ZIP was not produced'
     Expand-Archive -LiteralPath $zip -DestinationPath (Join-Path $temp 'extracted')
     $extracted = Join-Path $temp 'extracted/controlflow-codex'
-    foreach ($file in @('plugin.json', '.codex-plugin/plugin.json', 'plans/templates/plan.meta.v3.json', 'plans/examples/small-v3.meta.json', 'scripts/validate-contract.ps1', 'scripts/get-storage-paths.ps1', 'scripts/lib/Storage.ps1', 'scripts/install.ps1', 'scripts/ControlFlow.Package.psm1')) {
+    foreach($relative in @('evals/e2e-protocol.ps1','evals/V4-ADAPTER.md','tests/e2e-v4-adapter.tests.ps1','tests/e2e-v4-cli.tests.ps1')){Assert (Test-Path -LiteralPath (Join-Path $extracted $relative) -PathType Leaf) "Extracted package lost V4 adapter: $relative"}
+    foreach ($file in @('plugin.json', '.codex-plugin/plugin.json', 'plans/templates/plan.meta.v3.json', 'plans/examples/small-v3.meta.json', 'scripts/validate-contract.ps1', 'scripts/get-storage-paths.ps1', 'scripts/lib/Storage.ps1', 'scripts/install.ps1', 'scripts/ControlFlow.Package.psm1', 'docs/release.md','schemas/plan-meta-v4.schema.json','schemas/phase-artifact-v1.schema.json','plans/templates/plan.meta.v4.json','docs/v4-runtime.md','docs/architecture-policy.md','docs/migration-v4.md')) {
         Assert (Test-Path -LiteralPath (Join-Path $extracted $file) -PathType Leaf) "Extracted package lost nested file: $file"
     }
     $portable = Get-Content (Join-Path $extracted 'plugin.json') -Raw | ConvertFrom-Json
@@ -107,3 +108,4 @@ try {
     if (Test-Path -LiteralPath $resolved) { Remove-Item -LiteralPath $resolved -Recurse -Force }
 }
 Write-Output 'VALID package archive roundtrip and extracted install contract'
+& (Join-Path $PSScriptRoot 'native-legacy-package.tests.ps1') -Group Package

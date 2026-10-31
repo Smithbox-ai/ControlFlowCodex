@@ -27,7 +27,9 @@ Progress does not replace the contract, captured evidence, or delivery gates.
    Do not create local state directories or edit `.gitignore` to hide artifacts.
    Criteria and checks have unique IDs; each check declares its command,
    repository-relative working directory, and criterion references. Use the
-   real HEAD SHA and observed dirty paths. `commit.mode` defaults to `none` and
+   optional `inputs` array to name relevant ignored files using literal paths
+   relative to the repository root. See [evidence](evidence.md) for limits.
+   Use the real HEAD SHA and observed dirty paths. `commit.mode` defaults to `none` and
    becomes `required` only for an explicit user commit request. SMALL needs only
    JSON; MEDIUM/LARGE also write brief rationale **inside the run directory**
     after creation so bookkeeping stays outside repository source identity.
@@ -106,3 +108,11 @@ the turn pending an answer. A guessed answer or elapsed time is not resumption.
 
 Helpers capture evidence and gate delivery. They do not schedule tools, retry
 checks, manage agents, infer user decisions, or bypass native permissions.
+
+## V4 phase ordering
+
+Opt-in v4 follows context -> design -> qa-plan -> implementation-plan -> final
+preflight -> owned edits/checks -> qa-recheck -> review-packet -> judges -> gate.
+Re-entry is resume mode planning with an explicit user decision. Original
+foreign snapshots remain immutable. No new edits during planning/human wait.
+See [runtime interfaces](../../../docs/v4-runtime.md).

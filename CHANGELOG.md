@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Bind declared check input file hashes to captures and completion, including
+  ignored files, and bound process output collection by the check deadline.
+- Add a read-only readiness diagnostic and a human-readable completion-gate view,
+  with explicit limits on what they can establish about host trust and callbacks.
+- Add a first-run guide and prepare release archives with SHA-256 and versioned
+  changelog notes. Release artifacts do not certify behavioral or callback evidence.
+
 - Move contracts, evidence, locks and active markers outside Git projects into
   `CODEX_HOME/controlflow`, with an optional external `CONTROLFLOW_STATE_ROOT`.
   Preserve worktree/session binding and fail explicitly on unavailable storage;

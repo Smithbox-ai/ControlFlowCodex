@@ -1,5 +1,6 @@
 param([ValidateSet('All', 'PathAliases', 'PluginCase')][string]$Regression = 'All')
 $ErrorActionPreference = "Stop"
+if($Regression -eq 'All'){ & (Join-Path $PSScriptRoot 'native-legacy-package.tests.ps1') -Group Installer }
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $installerPath = Join-Path $repoRoot "scripts/install.ps1"

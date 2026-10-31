@@ -26,8 +26,8 @@ try {
     $runPath=$active.run_path
     $run=Read-ControlFlowRun -RepoRoot $repoRoot -RunPath $runPath -SessionId $payload.session_id
     if ($Event -eq 'SessionStart') {
-        $context="ControlFlow v3 task $($run.state.task_id), run $($run.state.run_id), state $($run.state.status). Reload $runPath/state.json and its contract before acting."
-        if ($run.state.status -in @('INTERRUPTED','CANCELLED','PERMISSION_DENIED','CLARIFICATION','BLOCKED','PLAN_MODE')) {
+        $context="ControlFlow $($run.state.schema_version) task $($run.state.task_id), run $($run.state.run_id), state $($run.state.status). Reload $runPath/state.json and its contract before acting."
+        if ($run.state.status -in @('INTERRUPTED','CANCELLED','PERMISSION_DENIED','CLARIFICATION','BLOCKED','PLAN_MODE','HUMAN_WAIT')) {
             $context+=' The preceding turn stopped lawfully; this is not DONE. Resume only after an explicit user decision, recorded through update-run.'
         }
         Publish @{hookSpecificOutput=@{hookEventName='SessionStart';additionalContext=$context}}
@@ -43,7 +43,7 @@ try {
     $decision=Get-ControlFlowStopPolicy -State $run.state -Gate $gate
     switch($decision.action) {
         'COMPLETE' {
-            $null=Update-ControlFlowRun -RepoRoot $repoRoot -RunPath $runPath -ExpectedRevision $run.state.revision -Event @{type='complete'}
+            if($run.state.status -cne 'COMPLETED'){$null=Update-ControlFlowRun -RepoRoot $repoRoot -RunPath $runPath -ExpectedRevision $run.state.revision -Event @{type='complete'}}
             Publish @{}
         }
         'LAWFUL_STOP' {

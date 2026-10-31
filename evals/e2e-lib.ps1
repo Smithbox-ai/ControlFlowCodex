@@ -1,5 +1,6 @@
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'e2e-fixtures.ps1')
+. (Join-Path $PSScriptRoot 'e2e-protocol.ps1')
 
 if($IsWindows -and -not ('E2EOwnedJob' -as [type])) {
 Add-Type -TypeDefinition @'
@@ -116,7 +117,9 @@ function Test-E2ENativeSkillInjection {
 }
 function Get-E2ETrialPrompt {
     param([hashtable]$Case,[string]$Variant)
-    $prefix=if($Variant -eq 'v3'){'$controlflow-codex:controlflow '}else{''}
+    if($Variant -cnotin @('native','v3','v4')){throw 'Unknown E2E treatment'}
+    $prefix=if($Variant -cin @('v3','v4')){'$controlflow-codex:controlflow '}else{''}
+    if($Variant -ceq 'v4'){$prefix+='Explicitly opt in to contract/runtime 4.0.0. Use the fixed proportional V4 route for this task; do not fall back to V3. '}
     return $prefix+$Case.task+"`nReturn the requested final JSON. If a product choice is required, use status needs_clarification with the actual question and a stable question_id. Never invent an answer. Mark a lawful stop blocked or cancelled. Commit only when this task explicitly asks for a commit."
 }
 function Write-E2EProcessReceipt {
@@ -256,7 +259,7 @@ function Get-E2EConfigArguments([hashtable]$Config) {
         $args.Add('-c');$args.Add('marketplaces.'+$marketplace+'.source='+($Config.MarketplaceRoot.Replace('\','/') | ConvertTo-Json -Compress))
     }
     # Native -c paths split on literal dots; TOML key quotes become literal key bytes.
-    $args.Add('-c');$args.Add('plugins.controlflow-codex@'+$marketplace+'.enabled='+ $(if($Config.Variant -eq 'v3'){'true'}else{'false'}))
+    $args.Add('-c');$args.Add('plugins.controlflow-codex@'+$marketplace+'.enabled='+ $(if($Config.Variant -cin @('v3','v4')){'true'}else{'false'}))
     return $args.ToArray()
 }
 
@@ -327,6 +330,9 @@ function Invoke-E2EPolicyPreflight {
 
 function Invoke-E2ETrial {
     param([hashtable]$Case,[hashtable]$Config,[string]$TrialDirectory)
+    $readiness=Get-E2EProtocolReadiness $Config
+    if(-not $readiness.may_launch){return New-E2EProtocolBlockedResult $Case $Config $TrialDirectory}
+    $Config=$Config.Clone();$Config.Variant=$Config.Variant.ToLowerInvariant()
     [IO.Directory]::CreateDirectory($TrialDirectory) | Out-Null
     $result=@{schema_version='1.0.0';case_id=$Case.id;tier=$Case.tier;variant=$Config.Variant;status='incomplete';reason='not-run';session_id=$null;resumes=0;usage=$null;outcome=$null;false_completion=$false;wall_ms=0;generation_started=$false;api_rejected_before_generation=$false;configuration_rejected_before_generation=$false;spend_status='unknown';provenance=@{project_trust='untrusted';model=$Config.Model;effort=$Config.Effort;host=$Config.HostLabel;cli_version=$Config.ExpectedCliVersion;settings=$Config.Settings;sandbox=$Config.Sandbox;windows_sandbox=$Config.WindowsSandbox;approval_policy=$Config.ApprovalPolicy;approvals_reviewer=$Config.ApprovalReviewer;marketplace_name=(Get-E2EMarketplaceName $Config);plugin_identity=('controlflow-codex@'+(Get-E2EMarketplaceName $Config));budget=@{tokens=$Config.MaxTokens;tools=$Config.MaxToolCalls;wall_seconds=$Config.MaxWallSeconds};plugin_sha256=$Config.PluginDigest}}
     $clock=[Diagnostics.Stopwatch]::StartNew();$fixture=$null;$session='';$started=[datetime]::UtcNow
@@ -449,6 +455,26 @@ function Invoke-E2ETrial {
     return $result
 }
 
+function New-E2EReviewMetrics([hashtable]$Measurements=@{},[ValidateSet('missing','manual','instrumented')][string]$Source='missing') {
+    $fields=@('active_human_review_ms','decision_wait_ms','substantive_reentries','review_packet_bytes','rework_ms','lead_time_ms')
+    $result=@{source=$Source}
+    if($Source -ceq 'missing' -and $Measurements.Count -gt 0){throw 'MEASUREMENT_SOURCE_REQUIRED'}
+    foreach($key in $Measurements.Keys){if($key -cnotin $fields){throw 'UNKNOWN_REVIEW_METRIC'}}
+    foreach($field in $fields){
+        $value=if($Measurements.ContainsKey($field)){$Measurements[$field]}else{$null}
+        if($null -ne $value -and ($value -isnot [ValueType] -or [double]::IsNaN([double]$value) -or [double]::IsInfinity([double]$value) -or [double]$value -lt 0)){throw 'INVALID_REVIEW_METRIC'}
+        $result[$field]=$value
+    }
+    return $result
+}
+function Measure-E2EReviewMetrics([object[]]$Records) {
+    $result=@{record_count=$Records.Count;manual_count=@($Records|Where-Object {$_.source -ceq 'manual'}).Count;instrumented_count=@($Records|Where-Object {$_.source -ceq 'instrumented'}).Count;fields=@{}}
+    foreach($field in @('active_human_review_ms','decision_wait_ms','substantive_reentries','review_packet_bytes','rework_ms','lead_time_ms')){
+        $values=@($Records|Where-Object {$null -ne $_[$field]}|ForEach-Object {[double]$_[$field]})
+        $result.fields[$field]=@{measured_count=$values.Count;missing_count=$Records.Count-$values.Count;median=$(if($values.Count -gt 0){Get-E2EMedian $values}else{$null})}
+    }
+    return $result
+}
 function Get-E2EMedian([double[]]$Values) {
     if(-not $Values.Count){return $null};$s=@($Values | Sort-Object);$n=$s.Count
     if($n % 2){return $s[[int][Math]::Floor($n/2)]};return ($s[$n/2-1]+$s[$n/2])/2
@@ -505,7 +531,9 @@ function Test-E2EResultEnvelope($Result) {
     return $true
 }
 function Measure-E2EPairs {
-    param([object[]]$Results)
+    param([object[]]$Results,[ValidateSet('v3','v4')][string]$Treatment='v3')
+    $Treatment=$Treatment.ToLowerInvariant()
+    if($Treatment -ceq 'v4'){return Measure-E2EV4Pairs $Results}
     $groups=@{};$pairs=[Collections.Generic.List[object]]::new();$unpaired=0;$incomplete=0
     $rejected=@($Results | Where-Object {$_.api_rejected_before_generation -or $_.configuration_rejected_before_generation})
     $Results=@($Results | Where-Object {-not $_.api_rejected_before_generation -and -not $_.configuration_rejected_before_generation})

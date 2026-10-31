@@ -1,9 +1,23 @@
-param([Parameter(Mandatory)][string]$Path,[Parameter(Mandatory)][string]$OutputPath,[Parameter(Mandatory)][string]$TaskId,[string]$BaselineCommit)
+param([Parameter(Mandatory)][string]$Path,[Parameter(Mandatory)][string]$OutputPath,[Parameter(Mandatory)][string]$TaskId,[string]$BaselineCommit,[ValidateSet("3.0.0","4.0.0")][string]$TargetVersion="3.0.0")
 $ErrorActionPreference='Stop'
 Import-Module "$PSScriptRoot/ControlFlow.Core.psm1" -Force -DisableNameChecking
 $tempPath=$null
 try {
 $r=Read-ControlFlowContract -Path $Path -AllowV2
+if($TargetVersion -ceq '4.0.0'){
+    if($r.contract.schema_version -cne '3.0.0'){throw 'V4_MIGRATION_REQUIRES_V3'}
+    if(Test-Path -LiteralPath $OutputPath){throw 'MIGRATION_OUTPUT_EXISTS'}
+    $next=Get-Content (Join-Path $PSScriptRoot '../plans/templates/plan.meta.v4.json') -Raw|ConvertFrom-Json -AsHashtable
+    foreach($key in @('goal','tier','baseline','scope','criteria','checks','risks','phases','assumptions')){if($r.contract.ContainsKey($key)){$next[$key]=$r.contract[$key]}}
+    $next.task_id=$TaskId;$next.contract_status='draft';$next.commit=@{mode='none'}
+    $next.review_policy.requirements=@($next.criteria|ForEach-Object {@{target_id=$_.id;judges=@('code')}})
+    if($BaselineCommit){$next.baseline.commit=$BaselineCommit}
+    $tempPath=[IO.Path]::GetFullPath($OutputPath)+'.'+[guid]::NewGuid().ToString('N')+'.tmp'
+    [IO.File]::WriteAllText($tempPath,($next|ConvertTo-Json -Depth 40))
+    Read-ControlFlowContract $tempPath|Out-Null
+    [IO.File]::Move($tempPath,[IO.Path]::GetFullPath($OutputPath))
+    @{status='PASS';approvals_reused=$false;review_required=$true;output_path=$OutputPath}|ConvertTo-Json;exit 0
+}
 if(-not $r.legacy){throw 'MIGRATION_REQUIRES_V2'}
 if(Test-Path -LiteralPath $OutputPath){throw 'MIGRATION_OUTPUT_EXISTS'}
 $c=$r.contract;$criteria=[Collections.Generic.List[object]]::new();$checks=[Collections.Generic.List[object]]::new()

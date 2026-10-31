@@ -88,3 +88,19 @@ inferred. Mark inference as inference; do not present it as verified fact.
 
 - Do not duplicate native `/review`'s mechanical, style, or security findings.
 - Do not skip plan comparison when an approved plan exists.
+
+## V4 QA and decision packet
+
+Use qa-recheck to compare each original QA expected result with current diff
+and captured evidence. Never change expected results to legalize a defect; fix
+code or explicitly re-enter planning for a real requirement change. Missing,
+zero-test, unsupported and incomplete reports remain visible gaps. Counts do
+not prove semantic quality. Assemble the compact review-packet from saved
+evidence: behavior/invariants, diff, results, limitations, rollback and open
+decisions. Inspect its generated evidence_summary.
+
+Satisfy all required code/agent/human judges. Human final override applies even
+when the profile omits it. A different native model is optional and does not
+prove independence. Findings cite rule, source, consequence and evidence.
+Re-run the gate on current source. PASS grants no external-effect authority.
+Read [v4 workflow](../../docs/v4-runtime.md).

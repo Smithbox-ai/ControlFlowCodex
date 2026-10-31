@@ -1,5 +1,11 @@
 # Real repository E2E evaluation (development only)
 
+V4 has an offline preparation/runtime-receipt adapter and a separate stdout-only
+collector. Actual paired V4 execution remains blocked until native context,
+policy, child accounting and isolation are demonstrable. See
+[V4-ADAPTER.md](V4-ADAPTER.md) for commands and evidence limits. The legacy
+native/V3 protocol below retains its existing session-access requirements.
+
 `run-e2e.ps1` launches the installed **real Codex CLI**. The fake CLI used by
 `tests/e2e-evals.tests.ps1` is generated in a temporary test directory and is
 never used for a baseline. Nothing in this directory is a plugin runtime
@@ -269,3 +275,21 @@ and artifact collection; it does not establish semantic recall. Every report,
 including an empty report, needs independent offline annotation before semantic metrics become complete.
 No Diagnostics model run is authorized by the current pilot. `production_ready` always remains
 false: real A/B release evidence and Desktop callbacks remain required.
+
+## V4 readiness boundary
+
+The existing paid paired harness remains native/v3; it must not silently relabel
+V4 as V3 or claim isolation. V4 model trials are BLOCKED pending a separately
+authorized concrete budget, pinned inventories/settings and proven absence of
+ambient treatment leakage. During this implementation session, session-path
+reads are forbidden; the existing rollout collector must not be invoked.
+Documented `exec --json` stdout can supply root turn usage without history reads,
+but does not prove all child usage or actual injected skills/policies. A future
+telemetry adapter must preserve those unknowns and pass strict provenance checks.
+
+`New-E2EReviewMetrics` and `Measure-E2EReviewMetrics` add optional active human
+review, decision wait, re-entries, packet size, rework and lead-time measurements.
+They distinguish manual/instrumented/missing sources, show measured sample
+counts and never impute missing values as zero. They do not collect or invent
+measurements automatically. Existing success, false-completion and token metrics
+remain. Synthetic outcomes are not production CFR/recovery metrics.

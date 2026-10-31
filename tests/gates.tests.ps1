@@ -56,6 +56,54 @@ Write-Output "gates final: $script:Count assertions passed"
 $global:LASTEXITCODE=0
 $r=NewFixture
 try {
+    File $r '.gitignore' 'ignored-root.txt';Git $r @('add','.gitignore')|Out-Null;Git $r @('commit','-qm','ignore input')|Out-Null
+    File $r 'ignored-root.txt' 'good';$sub=Join-Path $r 'sub';[IO.Directory]::CreateDirectory($sub)|Out-Null
+    $p=Contract $r 'SMALL' 'none' "if ((Get-Content ignored-root.txt) -ne 'good') { throw 'bad' }" 'subdirectory'
+    $v=Get-Content $p -Raw|ConvertFrom-Json -AsHashtable;$v.checks[0].inputs=@('ignored-root.txt');[IO.File]::WriteAllText($p,($v|ConvertTo-Json -Depth 20))
+    $run=Start-ControlFlowRun $sub $p 'subdirectory'
+    $capture=Capture-ControlFlowCheck $sub $run.run_path 'check-1'
+    Update-ControlFlowRun $sub $run.run_path @{type='coverage';criterion_id='C1';check_ids=@('check-1')}|Out-Null
+    Assert ($capture.status -eq 'PASS') 'relative check cwd resolves from the Git root even when invoked from a subdirectory'
+    File $r 'ignored-root.txt' 'bad'
+    $gate=Test-ControlFlowGate $sub $run.run_path 'Completion'
+    Assert ('CHECK_STALE:check-1' -in $gate.reasons) 'declared input uses Git root even when invoked from a subdirectory'
+    Write-Output "gates subdirectory input: $script:Count assertions passed"
+} finally {RemoveFixture $r}
+$global:LASTEXITCODE=0
+$r=NewFixture
+try {
+File $r '.gitignore' 'ignored-input.txt';Git $r @('add','.gitignore')|Out-Null;Git $r @('commit','-qm','ignore fixture')|Out-Null
+File $r 'ignored-input.txt' 'good'
+$p=Contract $r 'SMALL' 'none' "if ((Get-Content ignored-input.txt) -ne 'good') { throw 'bad' }" -SessionId 'declared-input'
+$v=Get-Content $p -Raw|ConvertFrom-Json -AsHashtable;$v.checks[0].inputs=@('ignored-input.txt');[IO.File]::WriteAllText($p,($v|ConvertTo-Json -Depth 20))
+$run=Start-ControlFlowRun $r $p 'declared-input';$path=$run.run_path
+$capture=Capture-ControlFlowCheck $r $path 'check-1'
+Update-ControlFlowRun $r $path @{type='coverage';criterion_id='C1';check_ids=@('check-1')}|Out-Null
+Assert ($capture.status -eq 'PASS' -and (Test-ControlFlowGate $r $path 'Completion').status -eq 'PASS') 'declared ignored file allows fresh successful capture'
+File $r 'ignored-input.txt' 'bad';$gate=Test-ControlFlowGate $r $path 'Completion'
+Assert ($gate.status -eq 'FAIL' -and 'CHECK_STALE:check-1' -in $gate.reasons) 'changed declared ignored input invalidates captured check'
+File $r 'ignored-input.txt' 'good';Capture-ControlFlowCheck $r $path 'check-1'|Out-Null
+Update-ControlFlowRun $r $path @{type='coverage';criterion_id='C1';check_ids=@('check-1')}|Out-Null
+[IO.File]::Delete((Join-Path $r 'ignored-input.txt'));$gate=Test-ControlFlowGate $r $path 'Completion'
+Assert ($gate.status -eq 'FAIL' -and 'CHECK_STALE:check-1' -in $gate.reasons) 'deletion of declared input invalidates captured check'
+File $r 'ignored-input.txt' 'good'
+$v.checks[0].command="[IO.File]::WriteAllText('ignored-input.txt','changed')";[IO.File]::WriteAllText($p,($v|ConvertTo-Json -Depth 20))
+$capture=Capture-ControlFlowCheck $r $path 'check-1'
+Assert ($capture.status -eq 'STALE') 'declared input changed during check is never PASS'
+[IO.Directory]::CreateDirectory((Join-Path $r 'input-dir'))|Out-Null
+$v.checks[0].inputs=@('input-dir');[IO.File]::WriteAllText($p,($v|ConvertTo-Json -Depth 20))
+Throws {Capture-ControlFlowCheck $r $path 'check-1'} 'directories cannot be declared as file inputs'
+$link=Join-Path $r 'input-link';$linkCreated=$false
+try{New-Item -ItemType SymbolicLink -Path $link -Target (Join-Path $r 'ignored-input.txt') -ErrorAction Stop|Out-Null;$linkCreated=$true}catch{}
+if($linkCreated){
+    $v.checks[0].inputs=@('input-link');[IO.File]::WriteAllText($p,($v|ConvertTo-Json -Depth 20))
+    Throws {Capture-ControlFlowCheck $r $path 'check-1'} 'symbolic links cannot be declared as file inputs'
+}
+Write-Output "gates input freshness total: $script:Count assertions passed"
+}finally{if($r -and [IO.Path]::GetFileName($r).StartsWith('cf-core-')){RemoveFixture $r}}
+$global:LASTEXITCODE=0
+$r=NewFixture
+try {
 $p=Contract $r 'SMALL' 'required' -SessionId 'wrong-tree';$run=Start-ControlFlowRun $r $p 'wrong-tree';$path=$run.run_path
 File $r 'owned.txt' 'requested edit';Capture-ControlFlowCheck $r $path 'check-1'|Out-Null
 Update-ControlFlowRun $r $path @{type='coverage';criterion_id='C1';check_ids=@('check-1')}|Out-Null

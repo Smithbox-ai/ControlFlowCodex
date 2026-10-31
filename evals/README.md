@@ -35,3 +35,27 @@ The old static artifact scorer, seven JSON scoring cases and static baseline
 were removed. Prior captured observations stay preserved; they are not
 silently converted into complete v3 evidence. Evaluation scripts are not
 plugin runtime dependencies.
+
+## V4 readiness boundary
+
+The existing paid paired harness remains native/v3; it must not silently relabel
+V4 as V3 or claim isolation. V4 model trials are BLOCKED pending a separately
+authorized concrete budget, pinned inventories/settings and proven absence of
+ambient treatment leakage. During this implementation session, session-path
+reads are forbidden; the existing rollout collector must not be invoked.
+Documented `exec --json` stdout can supply root turn usage without history reads,
+but does not prove all child usage or actual injected skills/policies. A future
+telemetry adapter must preserve those unknowns and pass strict provenance checks.
+
+`New-E2EReviewMetrics` and `Measure-E2EReviewMetrics` add optional active human
+review, decision wait, re-entries, packet size, rework and lead-time measurements.
+They distinguish manual/instrumented/missing sources, show measured sample
+counts and never impute missing values as zero. They do not collect or invent
+measurements automatically. Existing success, false-completion and token metrics
+remain. Synthetic outcomes are not production CFR/recovery metrics.
+V4 offline treatment preparation, bound runtime receipts, stdout-only collection,
+and schema-2 comparisons are described in [V4-ADAPTER.md](V4-ADAPTER.md).
+Both stdout arms currently block model execution because native provenance and
+ambient isolation remain unverified. Preparation and synthetic fixtures are not
+paired-trial evidence. Legacy native/V3 collection remains separate.
+
