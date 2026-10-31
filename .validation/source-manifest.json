@@ -1,10 +1,9 @@
 {
   "schema_version": 1,
-  "source_archive_sha256": "031b033ff124bea24bee0ab682d978ef6248bcb5e35d9a6fe2a9321e0869d9ec",
-  "parent_source_archive_sha256": "4bb79bcbec28187a9ca6831f9aca8f4ca3e10aa029dfc0ebc35f6ece85442d37",
+  "source_archive_sha256": "d369b6711f0d618fafd04853893df34c7bdab3caf68d3d94f309336e06046848",
+  "parent_source_archive_sha256": "031b033ff124bea24bee0ab682d978ef6248bcb5e35d9a6fe2a9321e0869d9ec",
   "source_changes": [
-    "scripts/lib/Git.ps1",
-    "tests/process-timeout.tests.ps1"
+    "tests/run-contract-tests.ps1"
   ],
   "files": [
     {
@@ -461,7 +460,7 @@
     },
     {
       "path": "tests/run-contract-tests.ps1",
-      "sha256": "d4704a97cdbe405210085de04b7cf9e19bc9f981bde8447729c2edae299e9841"
+      "sha256": "ec9a88b36fbc23a90abcabea34fa47a707312669428a5e872d57faeca55cadda"
     },
     {
       "path": "tests/run-evidence.tests.ps1",

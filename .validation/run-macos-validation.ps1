@@ -6,7 +6,7 @@ if(-not $IsMacOS -or $env:GITHUB_REPOSITORY -cne 'Smithbox-ai/ControlFlowCodex' 
 $sourceZip=Join-Path $PSScriptRoot 'source.zip'
 $manifestPath=Join-Path $PSScriptRoot 'source-manifest.json'
 $zipHash=(Get-FileHash -LiteralPath $sourceZip -Algorithm SHA256).Hash.ToLowerInvariant()
-if($zipHash -cne '031b033ff124bea24bee0ab682d978ef6248bcb5e35d9a6fe2a9321e0869d9ec'){throw 'SOURCE_ARCHIVE_HASH_MISMATCH'}
+if($zipHash -cne 'd369b6711f0d618fafd04853893df34c7bdab3caf68d3d94f309336e06046848'){throw 'SOURCE_ARCHIVE_HASH_MISMATCH'}
 $physicalTemp=(& /bin/sh -c 'cd "$1" && pwd -P' sh $env:RUNNER_TEMP)
 if($LASTEXITCODE -or -not [IO.Path]::IsPathFullyQualified($physicalTemp)){throw 'PHYSICAL_TEMP_UNAVAILABLE'}
 $root=[IO.Path]::GetFullPath($env:CF_VALIDATION_ROOT)
@@ -47,6 +47,7 @@ try {
     }else{
         if($env:CF_DIAGNOSTIC_SOURCE -cne $zipHash -or $env:CF_DIAGNOSTIC_COMMIT -cne $env:GITHUB_SHA -or $env:CF_DIAGNOSTIC_PASSED -cne 'true'){throw 'SUCCESSFUL_SAME_CANDIDATE_DIAGNOSTIC_REQUIRED'}
         if(@(Get-PSBreakpoint).Count){throw 'AGGREGATE_MUST_HAVE_NO_DEBUG_BREAKPOINTS'}
+        $env:CONTROLFLOW_TEST_PROGRESS='1'
         $r=Invoke-Pester -Path (Join-Path $repo 'tests/controlflow-contract.Tests.ps1') -Output Detailed -PassThru
         $summary.pester_result=@{status=$r.Result;passed=$r.PassedCount;failed=$r.FailedCount;skipped=$r.SkippedCount;not_run=$r.NotRunCount;registered_suites=$expected;execution_evidence='Unchanged original wrapper and frozen runner with35 unconditional calls; no debugger observers'}
         if($r.Result -cne 'Passed' -or $r.PassedCount -ne 1 -or $r.FailedCount -ne 0 -or $r.SkippedCount -ne 0 -or $r.NotRunCount -ne 0){throw 'ORIGINAL_PESTER_WRAPPER_FAILED_OR_INCOMPLETE'}

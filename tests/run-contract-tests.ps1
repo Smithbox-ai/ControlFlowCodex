@@ -12,6 +12,8 @@ function Invoke-ContractScript([string]$Name) {
         throw "Missing contract test: $path"
     }
 
+    $suiteClock = if ($env:CONTROLFLOW_TEST_PROGRESS -ceq '1') { [Diagnostics.Stopwatch]::StartNew() } else { $null }
+    if ($suiteClock) { [Console]::Out.WriteLine(("SUITE_START {0} {1:o}" -f $Name,[datetime]::UtcNow)) }
     $global:LASTEXITCODE = 0
     $output = @(& $path 2>&1)
     foreach ($line in $output) {
@@ -20,6 +22,7 @@ function Invoke-ContractScript([string]$Name) {
     if ($LASTEXITCODE -ne 0) {
         throw "Contract test failed: $Name"
     }
+    if ($suiteClock) { [Console]::Out.WriteLine(("SUITE_PASS {0} elapsed_ms={1} {2:o}" -f $Name,$suiteClock.ElapsedMilliseconds,[datetime]::UtcNow)) }
 }
 
 Invoke-ContractScript "controlflow-skill-contract.tests.ps1"
