@@ -7,12 +7,10 @@ $zipHash=(Get-FileHash -LiteralPath $sourceZip -Algorithm SHA256).Hash.ToLowerIn
 if($zipHash -cne '7d65533e1e7aeca13644458fb56156397e7782dd7a9211d4011b458a60fa6252'){throw 'SOURCE_ARCHIVE_HASH_MISMATCH'}
 $physicalTemp=(& /bin/sh -c 'cd "$1" && pwd -P' sh $env:RUNNER_TEMP)
 if($LASTEXITCODE -or -not [IO.Path]::IsPathFullyQualified($physicalTemp)){throw 'PHYSICAL_TEMP_UNAVAILABLE'}
-$root=Join-Path $physicalTemp ('cf'+[guid]::NewGuid().ToString('N').Substring(0,8))
-[IO.Directory]::CreateDirectory($root)|Out-Null
-foreach($entry in @('tmp','state','xdg-config','xdg-data','xdg-cache','xdg-state','codex-empty')){[IO.Directory]::CreateDirectory((Join-Path $root $entry))|Out-Null}
-$env:TMPDIR=Join-Path $root 'tmp';$env:CONTROLFLOW_STATE_ROOT=Join-Path $root 'state'
-$env:XDG_CONFIG_HOME=Join-Path $root 'xdg-config';$env:XDG_DATA_HOME=Join-Path $root 'xdg-data'
-$env:XDG_CACHE_HOME=Join-Path $root 'xdg-cache';$env:XDG_STATE_HOME=Join-Path $root 'xdg-state';$env:CODEX_HOME=Join-Path $root 'codex-empty'
+$root=[IO.Path]::GetFullPath($env:CF_VALIDATION_ROOT)
+if([IO.Path]::GetDirectoryName($root) -cne $physicalTemp -or -not [IO.Path]::GetFileName($root).StartsWith('cf',[StringComparison]::Ordinal) -or -not [IO.Directory]::Exists($root)){throw 'OWNED_VALIDATION_ROOT_REQUIRED'}
+$expectedTemp=Join-Path $root 'tmp'
+if($env:TMPDIR -cne $expectedTemp -or [IO.Path]::GetTempPath().TrimEnd('/') -cne $expectedTemp){throw 'TMPDIR_MUST_BE_SET_BEFORE_POWERSHELL_START'}
 $repo=Join-Path $root 'repo'
 git clone --no-hardlinks --no-checkout $env:GITHUB_WORKSPACE $repo
 if($LASTEXITCODE){throw 'VALIDATION_GIT_CLONE_FAILED'}
@@ -40,7 +38,15 @@ $expected=@([regex]::Matches([IO.File]::ReadAllText($runner),'(?m)^Invoke-Contra
 if($expected.Count -ne 35){throw 'WRONG_EXPECTED_SUITE_COUNT'}
 try {
     $bp=Set-PSBreakpoint -Script $runner -Line $line -Action {[IO.File]::AppendAllText($env:CF_MACOS_PROGRESS,$Name+[Environment]::NewLine);[Console]::WriteLine([datetime]::UtcNow.ToString('o')+' SUITE '+$Name)}
-    try {$r=Invoke-Pester -Path (Join-Path $repo 'tests/controlflow-contract.Tests.ps1') -Output Detailed -PassThru} finally {Remove-PSBreakpoint -Breakpoint $bp}
+    $storageBp=Set-PSBreakpoint -Script (Join-Path $repo 'tests/storage.tests.ps1') -Line 17 -Action {
+        try {
+            $read=Read-ControlFlowRun $r $run.run_path;$capture=@($read.evidence.checks)[-1];$gate=Test-ControlFlowGate $r $run.run_path Completion
+            $diagnostic=[ordered]@{capture_status=$capture.status;timed_out=$capture.timed_out;exit_code=$capture.exit_code;process_incomplete=$capture.process_incomplete;gate_status=$gate.status;gate_reasons=$gate.reasons;tmpdir=$env:TMPDIR;runtime_temp=[IO.Path]::GetTempPath()}
+            foreach($name in @('stdout','stderr')){$ref=$capture[$name+'_ref'];$value=[Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes((Join-Path $run.run_path $ref.path)));$diagnostic[$name]=$value.Substring(0,[Math]::Min(2048,$value.Length))}
+            [Console]::WriteLine('STORAGE_DIAGNOSTIC_JSON '+($diagnostic|ConvertTo-Json -Depth 5 -Compress))
+        }catch{[Console]::WriteLine('STORAGE_DIAGNOSTIC_ERROR '+$_.Exception.Message)}
+    }
+    try {$r=Invoke-Pester -Path (Join-Path $repo 'tests/controlflow-contract.Tests.ps1') -Output Detailed -PassThru} finally {Remove-PSBreakpoint -Breakpoint $bp,$storageBp}
     $actual=@(Get-Content -LiteralPath $progress)
     $summary.pester_result=@{status=$r.Result;passed=$r.PassedCount;failed=$r.FailedCount;skipped=$r.SkippedCount;not_run=$r.NotRunCount;suites=$actual}
     if($r.Result -cne 'Passed' -or $r.PassedCount -ne 1 -or $r.FailedCount -ne 0 -or $r.SkippedCount -ne 0 -or $r.NotRunCount -ne 0 -or $actual.Count -ne 35 -or @(Compare-Object $expected $actual -SyncWindow 0).Count){throw 'ORIGINAL_PESTER_WRAPPER_FAILED_OR_INCOMPLETE'}
