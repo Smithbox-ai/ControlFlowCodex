@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "source_archive_sha256": "4bb79bcbec28187a9ca6831f9aca8f4ca3e10aa029dfc0ebc35f6ece85442d37",
-  "parent_source_archive_sha256": "7d65533e1e7aeca13644458fb56156397e7782dd7a9211d4011b458a60fa6252",
+  "source_archive_sha256": "031b033ff124bea24bee0ab682d978ef6248bcb5e35d9a6fe2a9321e0869d9ec",
+  "parent_source_archive_sha256": "4bb79bcbec28187a9ca6831f9aca8f4ca3e10aa029dfc0ebc35f6ece85442d37",
   "source_changes": [
     "scripts/lib/Git.ps1",
     "tests/process-timeout.tests.ps1"
@@ -233,7 +233,7 @@
     },
     {
       "path": "scripts/lib/Git.ps1",
-      "sha256": "1e6efd8616a45dd55c355f56fc28408f3e64a0800f7e84a0aa545fbab288d638"
+      "sha256": "cf297161dd6554ccbd7af2bc8dc13b92ddd4405334798198aa5f3936768d8cf2"
     },
     {
       "path": "scripts/lib/Interrupts.ps1",
@@ -429,7 +429,7 @@
     },
     {
       "path": "tests/process-timeout.tests.ps1",
-      "sha256": "59e3d01a8273c5367ae1fb2b4783ef87dc6df737453996987f4b77b7982317ce"
+      "sha256": "6143bf1124cea4b318c537bea796afa9c1ee2d459f3fd20bec2a4dfa921c0b4b"
     },
     {
       "path": "tests/promotion-v4.tests.ps1",

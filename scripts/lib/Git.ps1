@@ -14,10 +14,25 @@ function Invoke-CFGroupSignal([int]$GroupId,[int]$Signal) {
     if(-not ('CFUnixGroupSignal' -as [type])){
         if($IsWindows){throw 'PROCESS_OWNERSHIP_UNAVAILABLE'}
         $library=if($IsMacOS){'/usr/lib/libSystem.B.dylib'}elseif($IsLinux){'libc'}else{throw 'PROCESS_OWNERSHIP_UNAVAILABLE'}
-        Add-Type -TypeDefinition "using System.Runtime.InteropServices; public static class CFUnixGroupSignal { [DllImport(`"$library`",SetLastError=true)] public static extern int kill(int pid,int signal); }"
+        Add-Type -TypeDefinition @"
+using System.Runtime.InteropServices;
+public readonly struct CFUnixSignalResult {
+ public readonly int Result;
+ public readonly int ErrorNumber;
+ public CFUnixSignalResult(int result,int errorNumber) { Result=result;ErrorNumber=errorNumber; }
+}
+public static class CFUnixGroupSignal {
+ [DllImport("$library",SetLastError=true)] private static extern int kill(int pid,int signal);
+ public static CFUnixSignalResult Send(int pid,int signal) {
+  int result=kill(pid,signal);
+  int errorNumber=result==-1 ? Marshal.GetLastPInvokeError() : 0;
+  return new CFUnixSignalResult(result,errorNumber);
+ }
+}
+"@
     }
-    $result=[CFUnixGroupSignal]::kill(-$GroupId,$Signal)
-    $errorNumber=if($result -eq -1){[Runtime.InteropServices.Marshal]::GetLastWin32Error()}else{0}
+    $signalResult=[CFUnixGroupSignal]::Send(-$GroupId,$Signal)
+    $result=$signalResult.Result;$errorNumber=$signalResult.ErrorNumber
     return Resolve-CFGroupSignalResult $result $errorNumber
 }
 function Test-CFGroupHasOtherProcess([int]$GroupId,[int]$RootId,[int]$MainId,[string]$Directory,[double]$RemainingSeconds) {
@@ -192,7 +207,12 @@ $child.WaitForExit();$writer.WriteLine([string]$child.Id);$writer.Dispose();[voi
         if($group){
             $empty=$false
             do {
-                try{if(-not (Invoke-CFGroupSignal $p.Id 0)){$empty=$true;break}}catch{$cleanupOk=$false;break}
+                try{if(-not (Invoke-CFGroupSignal $p.Id 0)){$empty=$true;break}}catch{
+                    # Darwin can report EPERM while a killed group contains only
+                    # zombies. It is never proof of absence: retry only within
+                    # this same deadline and still require a later ESRCH.
+                    if($_.Exception.Message -cne 'PROCESS_GROUP_SIGNAL_UNVERIFIABLE: errno=1'){$cleanupOk=$false;break}
+                }
                 if($drain.ElapsedMilliseconds -ge 750){break}
                 [Threading.Thread]::Sleep(10)
             } while($drain.ElapsedMilliseconds -lt 750)

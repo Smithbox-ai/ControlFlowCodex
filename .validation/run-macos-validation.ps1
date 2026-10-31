@@ -6,7 +6,7 @@ if(-not $IsMacOS -or $env:GITHUB_REPOSITORY -cne 'Smithbox-ai/ControlFlowCodex' 
 $sourceZip=Join-Path $PSScriptRoot 'source.zip'
 $manifestPath=Join-Path $PSScriptRoot 'source-manifest.json'
 $zipHash=(Get-FileHash -LiteralPath $sourceZip -Algorithm SHA256).Hash.ToLowerInvariant()
-if($zipHash -cne '4bb79bcbec28187a9ca6831f9aca8f4ca3e10aa029dfc0ebc35f6ece85442d37'){throw 'SOURCE_ARCHIVE_HASH_MISMATCH'}
+if($zipHash -cne '031b033ff124bea24bee0ab682d978ef6248bcb5e35d9a6fe2a9321e0869d9ec'){throw 'SOURCE_ARCHIVE_HASH_MISMATCH'}
 $physicalTemp=(& /bin/sh -c 'cd "$1" && pwd -P' sh $env:RUNNER_TEMP)
 if($LASTEXITCODE -or -not [IO.Path]::IsPathFullyQualified($physicalTemp)){throw 'PHYSICAL_TEMP_UNAVAILABLE'}
 $root=[IO.Path]::GetFullPath($env:CF_VALIDATION_ROOT)
@@ -30,7 +30,7 @@ $pesterRoot=Join-Path $root 'Pester';[IO.Compression.ZipFile]::ExtractToDirector
 Import-Module (Join-Path $pesterRoot 'Pester.psd1') -Force
 if((Get-Module Pester).Version.ToString() -cne '5.9.1'){throw 'WRONG_PESTER_VERSION'}
 $os=& /usr/bin/sw_vers
-$summary=[ordered]@{status='RUNNING';mode=$mode;started_at=[datetime]::UtcNow.ToString('o');commit=$env:GITHUB_SHA;repository=$env:GITHUB_REPOSITORY;source_zip_sha256=$zipHash;source_files=121;baseline=$baseline;macos=@($os);architecture=[Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString();process_architecture=[Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString();image_os=$env:ImageOS;image_version=$env:ImageVersion;pwsh=$PSVersionTable.PSVersion.ToString();git=(& git --version);pester='5.9.1';pester_nupkg_sha256='8dd4060fc3bc895f05bd655e4ab82abe346de54a4e6415dfb727cc8378672b69';models=0;artifact_uploads=0;cache_uploads=0;packages=@();corpora=@();native_callbacks='NOT_RUN'}
+$summary=[ordered]@{status='RUNNING';mode=$mode;started_at=[datetime]::UtcNow.ToString('o');commit=$env:GITHUB_SHA;repository=$env:GITHUB_REPOSITORY;source_zip_sha256=$zipHash;source_files=121;baseline=$baseline;macos=@($os);kernel_release=(& /usr/bin/uname -r);architecture=[Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString();process_architecture=[Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString();image_os=$env:ImageOS;image_version=$env:ImageVersion;pwsh=$PSVersionTable.PSVersion.ToString();git=(& git --version);pester='5.9.1';pester_nupkg_sha256='8dd4060fc3bc895f05bd655e4ab82abe346de54a4e6415dfb727cc8378672b69';models=0;artifact_uploads=0;cache_uploads=0;packages=@();corpora=@();native_callbacks='NOT_RUN'}
 Write-Output ('ENVIRONMENT_JSON '+($summary|ConvertTo-Json -Depth 5 -Compress))
 $progress=Join-Path $root 'suites.txt';$env:CF_MACOS_PROGRESS=$progress
 $runner=Join-Path $repo 'tests/run-contract-tests.ps1';$lines=[IO.File]::ReadAllLines($runner);$line=0

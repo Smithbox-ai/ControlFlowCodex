@@ -25,6 +25,35 @@ foreach($cleanupKind in @('job','group')){
         Assert ($cleanupObserved.probes -eq 1 -and $cleanupObserved.cleanup_ok -eq $cleanupCase.expected) "cleanup $cleanupKind observes once at elapsed=$($cleanupCase.ticks), presence=$($cleanupCase.mode), prior=$($cleanupCase.prior)"
     }
 }
+# A transient EPERM must never pass without a later ESRCH in the same deadline.
+$retryNodes=@($cleanupFunction.FindAll({param($n)$n -is [Management.Automation.Language.IfStatementAst] -and $n.Clauses[0].Item1.Extent.Text -ceq '$group' -and $n.Extent.Text.Contains('$empty=$false') -and $n.Extent.Text.Contains('$drain.ElapsedMilliseconds')},$true))
+if($retryNodes.Count -ne 1){throw 'Retry verification block is ambiguous'}
+$block=[scriptblock]::Create($retryNodes[0].Extent.Text)
+$cases=@(
+ @{name='transient EPERM requires subsequent ESRCH';sequence=@('EPERM','absent');limit=2;prior=$true;expected=$true;probes=2},
+ @{name='prior kill failure remains failure';sequence=@('EPERM','absent');limit=2;prior=$false;expected=$false;probes=2},
+ @{name='persistent EPERM never proves absence';sequence=@('EPERM','EPERM');limit=2;prior=$true;expected=$false;probes=2},
+ @{name='expired deadline forbids retry';sequence=@('EPERM');limit=1;prior=$true;expected=$false;probes=1},
+ @{name='unexpected errno remains fail closed';sequence=@('EINVAL','absent');limit=2;prior=$true;expected=$false;probes=1},
+ @{name='live group after EPERM remains failure';sequence=@('EPERM','present');limit=2;prior=$true;expected=$false;probes=2},
+ @{name='ESRCH after EPERM and live observation permits pass';sequence=@('EPERM','present','absent');limit=3;prior=$true;expected=$true;probes=3}
+)
+foreach($case in $cases){
+ $actual=& {
+  param($code,$case)
+  $script:RetryProbeCount=0;$script:RetryCase=$case
+  function Invoke-CFGroupSignal {
+   param($GroupId,$Signal)
+   $next=$script:RetryCase.sequence[[math]::Min($script:RetryProbeCount,$script:RetryCase.sequence.Count-1)];$script:RetryProbeCount++
+   switch -CaseSensitive ($next){'EPERM'{throw 'PROCESS_GROUP_SIGNAL_UNVERIFIABLE: errno=1'}'EINVAL'{throw 'PROCESS_GROUP_SIGNAL_UNVERIFIABLE: errno=22'}'absent'{return $false}'present'{return $true}default{throw 'BAD_FIXTURE'}}
+  }
+  $p=[pscustomobject]@{Id=424242};$group=$true;$cleanupOk=$case.prior
+  $drain=[pscustomobject]@{};$drain|Add-Member -MemberType ScriptProperty -Name ElapsedMilliseconds -Value {if($script:RetryProbeCount-ge$script:RetryCase.limit){750}else{0}}
+  . $code
+  @{cleanup_ok=$cleanupOk;probes=$script:RetryProbeCount}
+ } $block $case
+ Assert ($actual.cleanup_ok-eq$case.expected-and$actual.probes-eq$case.probes) $case.name
+}
 Assert ($null -ne (Get-Command Resolve-CFGroupSignalResult -ErrorAction SilentlyContinue)) 'group signal distinguishes absence from denied observation'
 Assert ((Resolve-CFGroupSignalResult 0 0) -eq $true) 'successful signal means group exists'
 Assert ((Resolve-CFGroupSignalResult -1 3) -eq $false) 'ESRCH confirms group absent'
@@ -50,6 +79,12 @@ Start-Sleep -Seconds 30
         while(-not (Test-Path -LiteralPath $readyFile) -and -not $process.HasExited -and $clock.Elapsed.TotalSeconds -lt 10){[Threading.Thread]::Sleep(20)}
         Assert ((Test-Path -LiteralPath $readyFile) -and [int][IO.File]::ReadAllText($readyFile) -eq $process.Id) 'owned POSIX process group is established before signalling'
         Assert (Invoke-CFGroupSignal $process.Id 0) 'live POSIX group is observable'
+        $pair=[CFUnixGroupSignal]::Send(-2147483647,0)
+        [Runtime.InteropServices.Marshal]::SetLastPInvokeError(1)
+        Assert ($pair.Result -eq -1 -and $pair.ErrorNumber -eq 3) 'native signal result and errno remain paired after an unrelated last-error change'
+        $pair=[CFUnixGroupSignal]::Send(-$process.Id,0)
+        [Runtime.InteropServices.Marshal]::SetLastPInvokeError(22)
+        Assert ($pair.Result -eq 0 -and $pair.ErrorNumber -eq 0) 'successful native signal pair reports zero errno independently of later calls'
         Assert (Invoke-CFGroupSignal $process.Id 9) 'owned POSIX group can be terminated'
         Assert ($process.WaitForExit(5000)) 'owned POSIX process exits after group termination'
         $clock.Restart();$absent=$false
