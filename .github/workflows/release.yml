@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Semver version to package (e.g. 3.0.0-rc.1). Ignored when triggered by a v* tag."
+        description: "Semver version to package (e.g. 4.0.0-rc.2). Ignored when triggered by a v* tag."
         required: false
         default: ""
 
@@ -33,6 +33,9 @@ jobs:
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
           Install-Module -Name Pester -MinimumVersion 5.0 -Scope CurrentUser -Force -AllowClobber
       - name: Run contract suite
+        # The default macOS /var temporary path is a symlink rejected by the installer.
+        env:
+          TMPDIR: ${{ runner.temp }}
         shell: pwsh
         run: |
           ./tests/run-contract-tests.ps1 -UsePester
@@ -46,6 +49,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Record checked out source commit
+        id: source
+        shell: pwsh
+        run: |
+          $source = @(git rev-parse --verify 'HEAD^{commit}')
+          if ($LASTEXITCODE -ne 0 -or $source.Count -ne 1 -or $source[0] -cnotmatch '^[a-f0-9]{40}([a-f0-9]{24})?$') { throw 'Cannot resolve checked out source commit' }
+          "sha=$($source[0])" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
       - name: Show PowerShell version
         shell: pwsh
         run: $PSVersionTable
@@ -59,36 +69,91 @@ jobs:
         run: |
           ./tests/run-contract-tests.ps1 -UsePester
           if ($LASTEXITCODE -ne 0) { throw "Contract suite failed: $LASTEXITCODE" }
-      - name: Resolve version
-        id: ver
-        shell: pwsh
-        run: |
-          $manifest = Get-Content plugin.json -Raw | ConvertFrom-Json
-          $v = if ($env:INPUT_VERSION -ne '') { $env:INPUT_VERSION } else { $manifest.version }
-          if ($env:GITHUB_REF -match 'refs/tags/v(.+)$') { $v = $Matches[1] }
-          if ($v -cne $manifest.version) { throw "Release version $v differs from manifest $($manifest.version)" }
-          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          Write-Output "Resolved version: $v"
-        env:
-          INPUT_VERSION: ${{ github.event.inputs.version }}
       - name: Build package
+        id: package
         shell: pwsh
+        env:
+          EXPECTED_SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          $v = "${{ steps.ver.outputs.version }}"
-          ./scripts/package.ps1 -OutputDirectory dist -Version $v
-          if ($LASTEXITCODE -ne 0) { throw "Extracted archive smoke failed: $LASTEXITCODE" }
+          $ErrorActionPreference = 'Stop'
+          $env:GIT_NO_REPLACE_OBJECTS = '1'
+          $source = @(git -C $env:GITHUB_WORKSPACE rev-parse --verify 'HEAD^{commit}')
+          if ($LASTEXITCODE -ne 0 -or $source.Count -ne 1 -or $source[0] -cnotmatch '^[a-f0-9]{40}([a-f0-9]{24})?$') { throw 'Cannot resolve package source commit' }
+          $sha = [string]$source[0]
+          if ($sha -cne $env:EXPECTED_SOURCE_SHA) { throw 'Checkout commit changed after the workflow started' }
+          $tempRoot = [IO.Path]::GetFullPath($env:RUNNER_TEMP)
+          $scratch = Join-Path $tempRoot ('controlflow-release-source-' + [guid]::NewGuid().ToString('N'))
+          $tar = Join-Path $scratch 'source.tar'
+          $snapshot = Join-Path $scratch 'source'
+          $output = Join-Path $env:GITHUB_WORKSPACE 'dist'
+          try {
+            [IO.Directory]::CreateDirectory($scratch) | Out-Null
+            git -C $env:GITHUB_WORKSPACE archive --format=tar "--output=$tar" $sha
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot archive package source commit' }
+            # Load the verifier directly from the commit as raw blob bytes. The
+            # archive itself must not be trusted to provide its own verifier.
+            $verifier = Join-Path $scratch 'verify-release-snapshot.ps1'
+            $info = [Diagnostics.ProcessStartInfo]::new()
+            $info.FileName = @(Get-Command git -CommandType Application)[0].Source
+            $info.UseShellExecute = $false; $info.RedirectStandardOutput = $true; $info.RedirectStandardError = $true
+            foreach ($arg in @('-C', $env:GITHUB_WORKSPACE, 'cat-file', 'blob', "${sha}:scripts/verify-release-snapshot.ps1")) { [void]$info.ArgumentList.Add($arg) }
+            $process = [Diagnostics.Process]::new(); $process.StartInfo = $info
+            $file = [IO.File]::Create($verifier)
+            try {
+              if (-not $process.Start()) { throw 'Cannot read snapshot verifier' }
+              $stderr = $process.StandardError.ReadToEndAsync()
+              $process.StandardOutput.BaseStream.CopyTo($file)
+              $process.WaitForExit(); [void]$stderr.GetAwaiter().GetResult()
+              if ($process.ExitCode -ne 0) { throw 'Cannot read snapshot verifier from source commit' }
+            } finally { $file.Dispose(); $process.Dispose() }
+            & $verifier -RepoRoot $env:GITHUB_WORKSPACE -Commit $sha -TarPath $tar
+            [IO.Directory]::CreateDirectory($snapshot) | Out-Null
+            [System.Formats.Tar.TarFile]::ExtractToDirectory($tar, $snapshot, $false)
+            & $verifier -RepoRoot $env:GITHUB_WORKSPACE -Commit $sha -TarPath $tar -ExtractedRoot $snapshot
+            $manifest = Get-Content -LiteralPath (Join-Path $snapshot 'plugin.json') -Raw | ConvertFrom-Json
+            $v = if (-not [string]::IsNullOrEmpty($env:INPUT_VERSION)) { $env:INPUT_VERSION } else { $manifest.version }
+            if ($env:GITHUB_REF -match '^refs/tags/v(.+)$') { $v = $Matches[1] }
+            if ($v -cne $manifest.version) { throw "Release version $v differs from manifest $($manifest.version)" }
+            & (Join-Path $snapshot 'scripts/assert-release-channel.ps1') -Version $v
+            & $verifier -RepoRoot $env:GITHUB_WORKSPACE -Commit $sha -TarPath $tar -ExtractedRoot $snapshot
+            & (Join-Path $snapshot 'scripts/package.ps1') -OutputDirectory $output -Version $v
+            if ($LASTEXITCODE -ne 0) { throw "Extracted archive smoke failed: $LASTEXITCODE" }
+            & $verifier -RepoRoot $env:GITHUB_WORKSPACE -Commit $sha -TarPath $tar -ExtractedRoot $snapshot
+            & (Join-Path $snapshot 'scripts/prepare-release-metadata.ps1') -ArchivePath (Join-Path $output "controlflow-codex-$v.zip") -Version $v -ChangelogPath (Join-Path $snapshot 'CHANGELOG.md') -OutputDirectory $output
+            # Packaging must not alter any helper before it is used for release.
+            & $verifier -RepoRoot $env:GITHUB_WORKSPACE -Commit $sha -TarPath $tar -ExtractedRoot $snapshot
+            & (Join-Path $snapshot 'scripts/check-github-release.ps1') -Repository $env:GITHUB_REPOSITORY -Version $v
+            & $verifier -RepoRoot $env:GITHUB_WORKSPACE -Commit $sha -TarPath $tar -ExtractedRoot $snapshot
+            $parameters = @{RepoRoot = $env:GITHUB_WORKSPACE; Version = $v; ExpectedCommit = $sha}
+            if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { $parameters.CreateIfMissing = $true }
+            & (Join-Path $snapshot 'scripts/ensure-release-tag.ps1') @parameters
+            "source_sha=$sha" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          } finally {
+            $resolved = [IO.Path]::GetFullPath($scratch)
+            if (-not $resolved.StartsWith($tempRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -or -not [IO.Path]::GetFileName($resolved).StartsWith('controlflow-release-source-')) { throw 'Unsafe release snapshot cleanup' }
+            if ([IO.Directory]::Exists($resolved)) { Remove-Item -LiteralPath $resolved -Recurse -Force }
+          }
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:
-          name: controlflow-codex-${{ steps.ver.outputs.version }}
-          path: dist/*.zip
-      - name: Create tag (workflow_dispatch only)
-        if: ${{ github.event_name == 'workflow_dispatch' }}
+          name: controlflow-codex-${{ steps.package.outputs.version }}
+          path: |
+            dist/controlflow-codex-${{ steps.package.outputs.version }}.zip
+            dist/controlflow-codex-${{ steps.package.outputs.version }}.zip.sha256
+            dist/release-notes.md
+          if-no-files-found: error
+      - name: Publish versioned archive, checksum, and notes
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.package.outputs.version }}
         run: |
-          $v = "${{ steps.ver.outputs.version }}"
-          git tag "v$v"
-          if ($LASTEXITCODE -ne 0) { throw "Tag creation failed: $LASTEXITCODE" }
-          git push origin "v$v"
-          if ($LASTEXITCODE -ne 0) { throw "Tag push failed: $LASTEXITCODE" }
-          Write-Output "Pushed tag v$v"
+          $v = $env:RELEASE_VERSION
+          $archive = "dist/controlflow-codex-$v.zip"
+          $arguments = @('release', 'create', "v$v", $archive, "$archive.sha256", '--verify-tag', '--title', "ControlFlow for Codex $v", '--notes-file', 'dist/release-notes.md')
+          if ($v.Contains('-')) { $arguments += '--prerelease' }
+          & gh @arguments
+          if ($LASTEXITCODE -ne 0) { throw "GitHub Release publication failed: $LASTEXITCODE. A partial draft may exist; follow docs/release.md before retrying." }

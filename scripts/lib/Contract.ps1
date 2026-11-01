@@ -1,6 +1,6 @@
 function Assert-CFMigrationInput {
     param([object]$Contract)
-    # This validates imported data for the v3 converter, not an executable legacy
+    # This validates imported data for the V4 converter, not an executable legacy
     # contract. It has no dependency on an installed legacy runtime or schema.
     function Assert-CFMigrationObject($Value,[string[]]$Required,[string[]]$Optional=@()) {
         if($Value -isnot [Collections.IDictionary]){throw 'INVALID_MIGRATION_INPUT: object required'}
@@ -61,14 +61,20 @@ function Read-ControlFlowContract {
         Assert-CFMigrationInput $contract
         return @{contract=$contract;digest=(Get-CFHash $bytes);legacy=$true}
     }
-    $schema=Join-Path $script:CoreModuleRoot '../schemas/plan-meta-v3.schema.json'
+    if($contract.schema_version -cnotin @('3.0.0','4.0.0')){throw 'UNSUPPORTED_CONTRACT_VERSION'}
+    $schema=Join-Path $script:CoreModuleRoot $(if($contract.schema_version -ceq '3.0.0'){'../schemas/compat/plan-meta-v3.schema.json'}else{'../schemas/plan-meta-v4.schema.json'})
     if(-not (Test-Json -Json $text -SchemaFile $schema -ErrorAction Stop)){throw 'INVALID_CONTRACT_SCHEMA'}
     $all=Get-CFMap;$criteria=Get-CFMap
     foreach($kind in @('criteria','checks','phases','risks','assumptions')) {
         if(-not $contract.ContainsKey($kind)){continue}
         foreach($item in $contract[$kind]){if($all.ContainsKey($item.id)){throw "DUPLICATE_ID: $($item.id)"};$all.Add($item.id,$true);if($kind -eq 'criteria'){$criteria.Add($item.id,$true)}}
     }
-    foreach($check in $contract.checks){foreach($id in $check.criteria){if(-not $criteria.ContainsKey($id)){throw "INVALID_CRITERION_REFERENCE: $id"}}}
+    foreach($check in $contract.checks){
+        foreach($id in $check.criteria){if(-not $criteria.ContainsKey($id)){throw "INVALID_CRITERION_REFERENCE: $id"}}
+        if($check.ContainsKey('inputs')){foreach($path in $check.inputs){
+            if([IO.Path]::IsPathRooted($path) -or $path.Contains('\') -or $path -match '[:*?]' -or @($path.Split('/') | Where-Object {$_ -in @('','.','..')}).Count -gt 0){throw "INVALID_CHECK_INPUT_PATH: $path"}
+        }}
+    }
     if($contract.ContainsKey('risks')){foreach($risk in $contract.risks){if($risk.impact -eq 'HIGH' -and -not $risk.resolved -and $contract.tier -ne 'LARGE'){throw 'UNRESOLVED_HIGH_REQUIRES_LARGE'}}}
     if($contract.ContainsKey('phases')) {
         $phases=Get-CFMap;foreach($phase in $contract.phases){$phases.Add($phase.id,$phase)}
@@ -83,10 +89,50 @@ function Read-ControlFlowContract {
         foreach($phase in $contract.phases){if($phase.ContainsKey('criteria')){foreach($id in $phase.criteria){if(-not $criteria.ContainsKey($id)){throw 'INVALID_CRITERION_REFERENCE'}}}}
     }
     foreach($glob in $contract.scope){if([IO.Path]::IsPathRooted($glob) -or $glob.Split('/') -contains '..' -or $glob.Contains('\')){throw 'INVALID_SCOPE_PATH'}}
-    return @{contract=$contract;digest=(Get-CFHash $bytes);legacy=$false}
+    if($contract.schema_version -ceq '4.0.0'){Assert-CFV4Contract $contract}
+    return @{contract=$contract;digest=(Get-CFHash $bytes);legacy=($contract.schema_version -ceq '3.0.0');compatibility=$(if($contract.schema_version -ceq '3.0.0'){'migration-or-existing-run-only'}else{'current'})}
 }
 function Get-ControlFlowClassification {
-    param([int]$ChangedFiles=0,[switch]$BehaviorChange,[switch]$HighRisk,[switch]$CrossBoundary,[switch]$ProductQuestion)
+    param([int]$ChangedFiles=0,[switch]$BehaviorChange,[switch]$HighRisk,[switch]$CrossBoundary,[switch]$ProductQuestion,[ValidateSet('4.0.0')][string]$SchemaVersion='4.0.0',[ValidateSet('feature','bugfix','refactor','docs')][string]$WorkType='feature',[ValidateSet('core','supporting','generic','unknown')][string]$Domain='unknown')
     $tier=if($HighRisk){'LARGE'}elseif($CrossBoundary -or $ProductQuestion -or $ChangedFiles -gt 5){'MEDIUM'}elseif($BehaviorChange -or $ChangedFiles -gt 1){'SMALL'}else{'TRIVIAL'}
-    return @{schema_version='3.0.0';tier=$tier;signals=@{changed_files=$ChangedFiles;behavior_change=[bool]$BehaviorChange;high_risk=[bool]$HighRisk;cross_boundary=[bool]$CrossBoundary;product_question=[bool]$ProductQuestion}}
+    $human=$HighRisk -or $CrossBoundary -or $ProductQuestion -or $Domain -in @('core','unknown')
+    $profile=if($tier -eq 'TRIVIAL' -and -not $human -and $WorkType -eq 'docs'){'light'}else{$WorkType}
+    return @{schema_version=$SchemaVersion;tier=$(if($tier -ceq 'TRIVIAL'){'SMALL'}else{$tier});workflow=@{profile=$profile;required_artifacts=@(Get-CFWorkflowKinds $profile)};review_policy=@{human_design=[bool]($human -or $WorkType -eq 'feature');human_final=[bool]$human}}
 }
+function Get-CFWorkflowKinds([string]$Profile) {
+    switch -CaseSensitive($Profile){
+        'light' {return @('review-packet')}
+        {$_ -in @('feature','bugfix','refactor','docs')} {return @('context','design','qa-plan','implementation-plan','qa-recheck','review-packet')}
+        default {throw 'UNKNOWN_WORKFLOW'}
+    }
+}
+function Assert-CFV4Contract($Contract) {
+    $expected=@(Get-CFWorkflowKinds $Contract.workflow.profile)
+    if(($expected -join '|') -cne (@($Contract.workflow.required_artifacts) -join '|')){throw 'FIXED_WORKFLOW_REQUIRED'}
+    if($Contract.workflow.profile -cne 'light' -and $Contract.workflow.profile -cne $Contract.work_type){throw 'WORKFLOW_WORK_TYPE_MISMATCH'}
+    $risks=if($Contract.ContainsKey('risks')){@($Contract.risks)}else{@()};$high=@($risks|Where-Object {$_.impact -ceq 'HIGH'}).Count -gt 0
+    if($Contract.workflow.profile -ceq 'light' -and ($Contract.work_type -cne 'docs' -or $Contract.tier -cne 'SMALL' -or $Contract.domain.classification -notin @('generic','supporting') -or $high)){throw 'LIGHT_ROUTE_UNSAFE'}
+    if(($Contract.domain.classification -in @('core','unknown') -or $high) -and (-not $Contract.review_policy.human_design -or -not $Contract.review_policy.human_final)){throw 'DOMAIN_DOES_NOT_LOWER_RISK'}
+    if($Contract.work_type -ceq 'feature' -and -not $Contract.review_policy.human_design){throw 'HUMAN_DESIGN_REQUIRED'}
+    $targets=@($Contract.criteria|ForEach-Object {$_.id});if($Contract.ContainsKey('phases')){$targets+=@($Contract.phases|ForEach-Object {$_.id})};$seen=Get-CFMap
+    foreach($req in $Contract.review_policy.requirements){
+        if($seen.ContainsKey($req.target_id)){throw 'DUPLICATE_REVIEW_TARGET'};$seen[$req.target_id]=$true
+        if($Contract.contract_status -ceq 'final' -and $req.target_id -cnotin $targets){throw 'INVALID_REVIEW_TARGET'}
+        if($Contract.contract_status -ceq 'final' -and 'code' -cin $req.judges){
+            $ids=@(if($req.target_id -cin @($Contract.criteria|ForEach-Object {$_.id})){$req.target_id}else{($Contract.phases|Where-Object {$_.id -ceq $req.target_id}).criteria})
+            if($ids.Count -eq 0){throw 'CODE_TARGET_CRITERIA_REQUIRED'}
+            foreach($id in $ids){if(@($Contract.checks|Where-Object {$id -cin $_.criteria}).Count -eq 0){throw 'CODE_CRITERION_CHECK_REQUIRED'}}
+        }
+    }
+    if($Contract.contract_status -ceq 'final'){foreach($criterion in $Contract.criteria){if(-not $seen.ContainsKey($criterion.id)){throw 'CRITERION_REVIEW_REQUIREMENT_MISSING'}}}
+    $profiles=Get-CFMap
+    foreach($profile in $Contract.quality_profiles){
+        if($profiles.ContainsKey($profile.id)){throw 'DUPLICATE_QUALITY_PROFILE'};$profiles[$profile.id]=$true
+        foreach($id in $profile.check_ids){if($id -cnotin @($Contract.checks|ForEach-Object {$_.id})){throw 'INVALID_PROFILE_CHECK'}}
+        if($profile.required -and $profile.check_ids.Count -eq 0 -and $profile.capability -ceq 'available'){throw 'REQUIRED_PROFILE_CHECK_MISSING'}
+    }
+}
+function Get-CFIntentDigest($Contract) {
+    Get-CFJsonHash ([ordered]@{task_id=$Contract.task_id;goal=$Contract.goal;baseline=$Contract.baseline;scope=$Contract.scope;intent=$Contract.intent;domain=$Contract.domain;work_type=$Contract.work_type;risks=$(if($Contract.ContainsKey('risks')){@($Contract.risks)}else{@()})})
+}
+function Get-CFPolicyDigest($Contract) {Get-CFJsonHash ([ordered]@{workflow=$Contract.workflow;review_policy=$Contract.review_policy})}

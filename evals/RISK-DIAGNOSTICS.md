@@ -10,10 +10,10 @@ Validate without model calls:
 pwsh -NoProfile -File evals/run-risk-diagnostics.ps1 -RepoRoot . -ValidateOnly
 ```
 
-Future paid runs use `run-risk-diagnostics.ps1 -Execute` with the same explicit
-model, effort, CLI version, native approvals/sandbox, session root, output,
-per-run/batch budgets and trial parameters as `run-e2e.ps1`. The wrapper uses
-that adapter and its root/child telemetry; it has no separate model runtime.
+The V4 diagnostic wrapper shares the stdout-only protocol. Actual execution and
+CLI discovery are currently BLOCKED before any model, CLI, authentication,
+history or cache access. Offline collection and review fixtures remain useful;
+they do not resolve missing native provenance.
 
 The model writes `diagnostics.json`. Collection proves artifact shape, actual
 source preservation and hashes. It does not establish semantic correctness.
@@ -23,7 +23,7 @@ artifacts, source changes, invalid findings or incomplete telemetry do not
 become successful diagnostic observations.
 
 Place offline annotations outside both model repositories, at
-`<reviews>/<native|v3>/<case-id>/<trial>.json`. Each annotation must contain:
+`<reviews>/<native|v4>/<case-id>/<trial>.json`. Each annotation must contain:
 
 ```json
 {
@@ -58,7 +58,7 @@ their replacement hashes; annotations cannot redefine captured observations.
 
 ```powershell
 pwsh -NoProfile -File evals/compare-risk-diagnostics.ps1 `
-  -NativeDirectory <native-cohort> -V3Directory <v3-cohort> `
+  -NativeDirectory <native-cohort> -V4Directory <v4-cohort> `
   -ReviewsDirectory <offline-reviews> -OutputPath <new-comparison.json>
 ```
 
@@ -71,3 +71,8 @@ closed. Keep both cohort manifests and native results unchanged.
 Subset recall is explicitly labelled; missing observations remain in coverage
 denominators. Diagnostic production readiness is always false here: the full
 release assessment must also combine implementation and safety evidence.
+
+V4 comparisons use schema 2.0.0 and remain BLOCKED while native context, policy,
+child usage and isolation cannot be verified. Per-arm manual annotation counts
+may be shown, but comparative completion and recall deltas stay incomplete/null.
+Local reviewer_kind=human is recorded provenance, not authenticated identity.

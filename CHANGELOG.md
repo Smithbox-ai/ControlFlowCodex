@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Bind declared check input file hashes to captures and completion, including
+  ignored files, and bound process output collection by the check deadline.
+- Add a read-only readiness diagnostic and a human-readable completion-gate view,
+  with explicit limits on what they can establish about host trust and callbacks.
+- Add a first-run guide and prepare release archives with SHA-256 and versioned
+  changelog notes. Release artifacts do not certify behavioral or callback evidence.
+
 - Move contracts, evidence, locks and active markers outside Git projects into
   `CODEX_HOME/controlflow`, with an optional external `CONTROLFLOW_STATE_ROOT`.
   Preserve worktree/session binding and fail explicitly on unavailable storage;
@@ -18,10 +25,60 @@
   while retaining the actual child exit code in its process receipt.
 
 - Favor the smallest coherent implementation with evidence for new structure.
-  Existing MEDIUM/LARGE preflight and conformance review check material complexity
-  beyond accepted scope; TRIVIAL/SMALL retain their existing workflow stages.
+  Profile preflight and conformance review check material complexity beyond
+  accepted scope; safe light docs retain a compact route without extra readers.
 
-## 3.0.0-rc.1 — native reliability candidate
+## 4.0.0-rc.3 - installer lifecycle candidate
+
+- Preserve the installed flavor for ordinary `install.ps1 -Force` upgrades and
+  report its selection; explicit cross-flavor changes still require both flags.
+- Support strictly validated NativeLegacy staging from canonical Universal source,
+  while keeping explicit fresh NativeLegacy selection and capability restrictions.
+- Retain complete previous source and exact registration bytes for recoverable
+  upgrade/uninstall, preserving unknown files and custom marketplace fields.
+- Make missing uninstall a no-op, support exact self-uninstall, and reject foreign
+  or duplicate registrations and flavor changes between inspection and lock.
+- Document local-source versus native cache/trust removal and add lifecycle
+  regressions. Native callback/trust acceptance remains separate from packaging.
+
+## 4.0.0-rc.2 - V4 candidate, not yet published
+
+- Make contract/runtime 4.0.0 the default and only new-run workflow. Keep
+  existing V3 runs under visibly marked legacy semantics; relocate the strict
+  V3 schema to compatibility-only use and remove new V3 templates/examples.
+- Migrate an external V2 or V3 contract into a separate V4 draft with commit
+  mode none. Existing state, decisions, captures and user files stay untouched;
+  a new task collects new evidence rather than inheriting approvals.
+- Add fixed context, design, QA-before-implementation, implementation plan,
+  QA recheck and review packet snapshots with exact intent/policy/input bindings.
+  Preserve the safe light docs path, one writer and native reader limits.
+- Require all declared code/agent/human judges. Record manual human decision
+  provenance without claiming authentication; verified-human mode fails closed
+  without a trusted receipt source. Waiting/rejection/interrupt remain incomplete.
+- Add explicit planning epochs and lawful resume while preserving original
+  foreign ownership and previously authorized carried work. Contract/source
+  changes conservatively stale dependent evidence.
+- Capture narrow recognized test/mutation reports with raw hashes, declared tool
+  metadata and visible unsupported/incomplete states. A controlled PowerShell
+  gate/ledger mutation pilot is separate from downstream project reports and
+  does not establish universal PowerShell mutation-tool support.
+- Preserve native Stop, SessionStart and Interrupt integration and bounded
+  continuation. Bound check process collection/cleanup, require observable
+  absence before cleanup acceptance, and retain fail-closed Unix errno handling.
+  This is not a guarantee to kill every native background command.
+- Retain distinct Universal and explicit NativeLegacy archives for the documented
+  native loader limitation, with transactional staged installation and rollback.
+  Refresh README, skills, migration and installation instructions for V4.
+- Keep native/V4 paired preparation separate from execution. Comparative model
+  execution remains blocked without complete supported provenance, context,
+  child accounting and isolation; no superiority, global hard token cap or
+  stable production-readiness claim is made. Final platform/native acceptance
+  must bind the exact candidate bytes.
+
+This entry describes the prepared candidate; it does not certify publication,
+complete platform acceptance or isolated paired outcomes.
+
+## 3.0.0-rc.1 - native reliability candidate
 
 - File-to-file LARGE CLI probes and a separate critical-risk diagnostic protocol
   bind source/result/criteria evidence, independent semantic annotations and

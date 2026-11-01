@@ -1,4 +1,4 @@
-. "$PSScriptRoot/core-test-helpers.ps1"
+. "$PSScriptRoot/v4-test-helpers.ps1"
 LoadCore
 Assert ($null -ne (Get-Command Get-ControlFlowStoragePaths -ErrorAction SilentlyContinue)) 'external storage path resolver exists'
 $r=NewFixture
@@ -9,9 +9,9 @@ try {
     $pwsh=@(Get-Command pwsh -CommandType Application)[0].Source
     $cliPaths=(& $pwsh -NoProfile -File $cli -RepoRoot $r -TaskId 'test-task' -SessionId 'storage-session' -Create)|ConvertFrom-Json -AsHashtable
     Assert ($LASTEXITCODE -eq 0 -and $cliPaths.contract_path -ceq $paths.contract_path) 'bundled CLI resolves the same external contract with a successful exit'
-    $p=Contract $r -SessionId 'storage-session'
+    $p=LegacyContract $r -SessionId 'storage-session'
     $before=Git $r @('status','--porcelain=v1','--untracked-files=all')
-    $run=Start-ControlFlowRun $r $p 'storage-session'
+    $run=New-HistoricalV3RunFixture $r $p 'storage-session'
     Capture-ControlFlowCheck $r $run.run_path 'check-1'|Out-Null
     Update-ControlFlowRun $r $run.run_path @{type='coverage';criterion_id='C1';check_ids=@('check-1')}|Out-Null
     Assert ((Test-ControlFlowGate $r $run.run_path 'Completion').status -eq 'PASS') 'external evidence proves completion'
@@ -54,8 +54,8 @@ try {
         if(-not $resolvedBare.StartsWith($tempBase,[StringComparison]::OrdinalIgnoreCase) -or -not [IO.Path]::GetFileName($resolvedBare).StartsWith('cf-bare-')){throw 'Unsafe bare fixture cleanup'}
         if([IO.Directory]::Exists($resolvedBare)){Remove-Item -LiteralPath $resolvedBare -Recurse -Force}
     }
-    $manualContract=Contract $r
-    $manual=Start-ControlFlowRun $r $manualContract -ManualFallback
+    $manualContract=LegacyContract $r
+    $manual=New-HistoricalV3RunFixture $r $manualContract -ManualFallback
     Assert ($manual.run_path -match '[/\\]sessions[/\\]manual[/\\]' -and $manual.state.manual_fallback) 'manual fallback has an external namespace without inventing native identity'
     Throws {Read-ControlFlowRun $r $manual.run_path 'storage-session'} 'native session cannot adopt manual fallback'
     $prior=$env:CONTROLFLOW_STATE_ROOT
@@ -113,12 +113,12 @@ try {
             Throws {Update-ControlFlowRun $r $run.run_path @{type='preflight';status='APPROVED'}} 'a writer lock link is rejected before opening its target'
             Assert (-not [IO.File]::Exists($escapedWriter)) 'writer lock cannot create project bookkeeping through a leaf link'
         } finally {[IO.File]::Delete($writerLock);[IO.File]::Delete($escapedWriter)}
-        $lockContract=Contract $r -SessionId 'lock-session'
+        $lockContract=V4Contract $r draft 'lock-session'
         $lockPaths=Get-ControlFlowStoragePaths $r 'test-task' 'lock-session'
         $escapedActive=[IO.Path]::Combine($r,'escaped-active.lock')
         [IO.File]::CreateSymbolicLink($lockPaths.active_path+'.lock',$escapedActive)|Out-Null
         try {
-            Throws {Start-ControlFlowRun $r $lockContract 'lock-session'} 'an active marker lock link is rejected before opening its target'
+            Throws {Start-ControlFlowRun $r $lockContract 'lock-session'} 'V4 active marker lock link is rejected before opening its target'
             Assert (-not [IO.File]::Exists($escapedActive)) 'active marker lock cannot create project bookkeeping through a leaf link'
         } finally {[IO.File]::Delete($lockPaths.active_path+'.lock');[IO.File]::Delete($escapedActive)}
         $unixUserId=& (@(Get-Command id -CommandType Application)[0]).Source -u
@@ -131,9 +131,9 @@ try {
         $literalRoot=$prior+'-literal\name'
         try {
             $env:CONTROLFLOW_STATE_ROOT=$literalRoot
-            $literalContract=Contract $r -SessionId 'literal-storage'
+            $literalContract=LegacyContract $r -SessionId 'literal-storage'
             Assert ($literalContract.StartsWith($literalRoot+'/',[StringComparison]::Ordinal)) 'external Unix root preserves literal backslash bytes'
-            $literalRun=Start-ControlFlowRun $r $literalContract 'literal-storage'
+            $literalRun=New-HistoricalV3RunFixture $r $literalContract 'literal-storage'
             Capture-ControlFlowCheck $r $literalRun.run_path 'check-1'|Out-Null
             Assert ([IO.File]::Exists([IO.Path]::Combine($literalRun.run_path,'state.json'))) 'literal Unix root holds real state and captures'
         } finally {$env:CONTROLFLOW_STATE_ROOT=$prior;if([IO.Directory]::Exists($literalRoot)){[IO.Directory]::Delete($literalRoot,$true)}}
@@ -141,7 +141,11 @@ try {
     File $r 'plans/artifacts/legacy-task/plan.meta.json' ([IO.File]::ReadAllText($p))
     $legacyPath=Join-Path $r 'plans/artifacts/legacy-task/plan.meta.json'
     $legacyContents=[IO.File]::ReadAllText($legacyPath)
-    Throws {Start-ControlFlowRun $r $legacyPath 'legacy-session'} 'project-local legacy contract requires explicit external migration'
+    Throws {New-HistoricalV3RunFixture $r $legacyPath 'legacy-session'} 'historical fixture cannot adopt a project-local legacy contract'
     Assert ([IO.File]::ReadAllText($legacyPath) -ceq $legacyContents) 'legacy artifacts are never silently rewritten or deleted'
+    $currentPath=V4Contract $r draft 'project-local-v4'
+    $outsideCanonical=Join-Path $r 'plans/artifacts/current-task/plan.meta.v4.json'
+    File $r 'plans/artifacts/current-task/plan.meta.v4.json' ([IO.File]::ReadAllText($currentPath))
+    Throws {Start-ControlFlowRun $r $outsideCanonical 'project-local-v4'} 'V4 admission rejects a project-local contract outside canonical external storage'
     Write-Output "VALID external state storage: $script:Count assertions"
 } finally {RemoveFixture $r}

@@ -18,6 +18,18 @@ and source identity before/after. A successful exit with zero discovered tests
 does not prove behavior. Read discovery/results and assess criterion coverage.
 Check-generated source edits make the capture STALE even when its exit is zero.
 
+Declare relevant ignored files in each check's optional `inputs` array, using
+literal file paths relative to the repository root. Their hashes are recorded
+before and after the check and compared again at the gate. Links, directories,
+globs, literal backslashes and paths outside the repository are unsupported. Undeclared ignored files,
+external files, environment variables and other outside inputs are not observed;
+recapture checks when any of those inputs changes. Do not infer their freshness
+from a PASS gate.
+
+On Unix, a check must not detach processes from its dedicated process group.
+Processes that leave that group can evade observation and cleanup; the group is
+not a security boundary and the gate cannot prove their completion.
+
 Contract mutation invalidates preflight, check definition, and coverage. Code
 mutation invalidates check evidence and final review. Intended edits after
 preflight do not by themselves invalidate its contract approval. Staging or
@@ -27,8 +39,20 @@ missing references and incomplete Git observations are UNVERIFIABLE.
 The deterministic ledger checks provenance, freshness, and coverage links. It
 does not prove the semantic truth of `PROVEN`, the suitability of a command, or
 an LLM's review. Keep observed evidence separate from hypotheses. A criterion
-without suitable executable evidence remains a gap; do not manufacture PASS.
+requiring code evidence without a suitable executable check remains a gap.
+Human-only V4 criteria use the required bound decision, not a dummy command.
+Every declared judge remains required; do not manufacture PASS.
 
 Never edit state.json or immutable captures to repair a gate. Use supported
 events and new captures. The OS-held writer lock and expected revision reject
 concurrent stale writes; unreferenced crash leftovers are not published evidence.
+
+## V4 report limits
+
+Known formats: single-suite JUnit, NUnit 3 and Stryker JSON. Unknown stdout is
+not proof of nonzero assertions. Captures retain tool/version, scope, config,
+baseline, exclusions, raw report/hash and status. JUnit counts cases, not
+assertions. Required unsupported profiles block; optional gaps stay visible.
+Mutation reports describe test sensitivity. Controlled PowerShell gate/ledger
+mutations are a separate bounded pilot, not universal language-tool support.
+No universal mutation score or CRAP threshold is imposed.

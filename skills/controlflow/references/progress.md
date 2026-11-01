@@ -37,3 +37,11 @@ TODO reflects work status; it is not contract approval, criterion coverage,
 check capture, reviewer evidence, or a completion gate. Native progress marked
 `completed` never authorizes a commit or DONE. Require fresh delivery-gate PASS
 and report actual checks and remaining gaps before final task completion.
+
+## V4 waits and epochs
+
+Track planning_epoch_id and receipt refs. HUMAN_WAIT, BLOCKED and interrupted
+work stay incomplete across sessions. Resume is not a new approval. Only a
+current exact manual decision receipt releases human wait; verified assurance
+needs a trusted verifier. Native TODOs are a view, not evidence. Measure active
+human review separately from wait; missing metrics remain absent, never zero.

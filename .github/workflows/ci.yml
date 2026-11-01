@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   validate:
     name: Contracts on ${{ matrix.os }}
@@ -13,19 +16,29 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+    timeout-minutes: 40
+    env:
+      CONTROLFLOW_TEST_PROGRESS: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
       - name: Show PowerShell version
         shell: pwsh
         run: $PSVersionTable
       - name: Install Pester
         shell: pwsh
         run: |
-          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-          Install-Module -Name Pester -MinimumVersion 5.0 -Scope CurrentUser -Force -AllowClobber
+          $package = Join-Path $env:RUNNER_TEMP 'Pester.5.9.1.nupkg'
+          Invoke-WebRequest 'https://www.powershellgallery.com/api/v2/package/Pester/5.9.1' -OutFile $package
+          if ((Get-FileHash $package).Hash.ToLowerInvariant() -cne '8dd4060fc3bc895f05bd655e4ab82abe346de54a4e6415dfb727cc8378672b69') { throw 'Pester package hash mismatch' }
+          [IO.Compression.ZipFile]::ExtractToDirectory($package,(Join-Path $env:RUNNER_TEMP 'Pester5'))
       - name: Run structural contract suite
         shell: pwsh
-        run: ./tests/run-contract-tests.ps1 -UsePester
+        run: |
+          Import-Module (Join-Path $env:RUNNER_TEMP 'Pester5/Pester.psd1') -Force
+          $result = Invoke-Pester -Path ./tests/controlflow-contract.Tests.ps1 -Output Detailed -PassThru
+          if ($result.Result -cne 'Passed' -or $result.PassedCount -ne 1 -or $result.FailedCount -ne 0 -or $result.SkippedCount -ne 0 -or $result.NotRunCount -ne 0) { throw 'Original Pester wrapper incomplete or failed' }
       - name: Validate executable E2E corpora (no models)
         shell: pwsh
         run: |
@@ -37,23 +50,33 @@ jobs:
   validate-macos:
     name: Contracts on macOS
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: macos-latest
+    runs-on: macos-15
+    timeout-minutes: 40
+    env:
+      CONTROLFLOW_TEST_PROGRESS: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
       - name: Show PowerShell version
         shell: pwsh
         run: $PSVersionTable
       - name: Install Pester
         shell: pwsh
         run: |
-          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-          Install-Module -Name Pester -MinimumVersion 5.0 -Scope CurrentUser -Force -AllowClobber
+          $package = Join-Path $env:RUNNER_TEMP 'Pester.5.9.1.nupkg'
+          Invoke-WebRequest 'https://www.powershellgallery.com/api/v2/package/Pester/5.9.1' -OutFile $package
+          if ((Get-FileHash $package).Hash.ToLowerInvariant() -cne '8dd4060fc3bc895f05bd655e4ab82abe346de54a4e6415dfb727cc8378672b69') { throw 'Pester package hash mismatch' }
+          [IO.Compression.ZipFile]::ExtractToDirectory($package,(Join-Path $env:RUNNER_TEMP 'Pester5'))
       - name: Run structural contract suite
         # The default /var temporary path traverses a symlink rejected by the installer.
         env:
           TMPDIR: ${{ runner.temp }}
         shell: pwsh
-        run: ./tests/run-contract-tests.ps1 -UsePester
+        run: |
+          Import-Module (Join-Path $env:RUNNER_TEMP 'Pester5/Pester.psd1') -Force
+          $result = Invoke-Pester -Path ./tests/controlflow-contract.Tests.ps1 -Output Detailed -PassThru
+          if ($result.Result -cne 'Passed' -or $result.PassedCount -ne 1 -or $result.FailedCount -ne 0 -or $result.SkippedCount -ne 0 -or $result.NotRunCount -ne 0) { throw 'Original Pester wrapper incomplete or failed' }
       - name: Validate executable E2E corpora (no models)
         env:
           TMPDIR: ${{ runner.temp }}

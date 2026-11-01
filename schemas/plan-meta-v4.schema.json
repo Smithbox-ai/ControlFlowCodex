@@ -1,0 +1,541 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ControlFlow v4 opt-in task contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "task_id",
+    "goal",
+    "tier",
+    "baseline",
+    "scope",
+    "criteria",
+    "checks",
+    "commit",
+    "contract_status",
+    "work_type",
+    "domain",
+    "intent",
+    "workflow",
+    "review_policy",
+    "quality_profiles"
+  ],
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/id"
+      }
+    }
+  },
+  "properties": {
+    "schema_version": {
+      "const": "4.0.0"
+    },
+    "task_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+    },
+    "goal": {
+      "$ref": "#/$defs/text"
+    },
+    "tier": {
+      "enum": [
+        "SMALL",
+        "MEDIUM",
+        "LARGE"
+      ]
+    },
+    "baseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commit",
+        "dirty_paths"
+      ],
+      "properties": {
+        "commit": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$"
+        },
+        "dirty_paths": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/text"
+          }
+        }
+      }
+    },
+    "scope": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/text"
+      }
+    },
+    "criteria": {
+      "type": "array",
+      "minItems": 0,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "text"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/id"
+          },
+          "text": {
+            "$ref": "#/$defs/text"
+          }
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 0,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "command",
+          "working_directory",
+          "criteria"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/id"
+          },
+          "command": {
+            "$ref": "#/$defs/text"
+          },
+          "working_directory": {
+            "$ref": "#/$defs/text"
+          },
+          "criteria": {
+            "$ref": "#/$defs/ids"
+          },
+          "inputs": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 256,
+            "uniqueItems": true,
+            "items": {
+              "$ref": "#/$defs/text"
+            }
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3600
+          },
+          "report": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "format",
+              "path",
+              "tool",
+              "version",
+              "scope",
+              "config",
+              "baseline",
+              "exclusions"
+            ],
+            "properties": {
+              "format": {
+                "enum": [
+                  "junit",
+                  "nunit3",
+                  "stryker-json"
+                ]
+              },
+              "path": {
+                "$ref": "#/$defs/text"
+              },
+              "minimum_tests": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "tool": {
+                "$ref": "#/$defs/text"
+              },
+              "version": {
+                "$ref": "#/$defs/text"
+              },
+              "scope": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/text"
+                },
+                "uniqueItems": true
+              },
+              "config": {
+                "$ref": "#/$defs/text"
+              },
+              "baseline": {
+                "$ref": "#/$defs/text"
+              },
+              "exclusions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/text"
+                },
+                "uniqueItems": true
+              },
+              "minimum_score": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              }
+            }
+          }
+        }
+      }
+    },
+    "commit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "none",
+            "required"
+          ]
+        }
+      }
+    },
+    "assumptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "text"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/id"
+          },
+          "text": {
+            "$ref": "#/$defs/text"
+          }
+        }
+      }
+    },
+    "risks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "text",
+          "impact",
+          "resolved"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/id"
+          },
+          "text": {
+            "$ref": "#/$defs/text"
+          },
+          "impact": {
+            "enum": [
+              "LOW",
+              "MEDIUM",
+              "HIGH"
+            ]
+          },
+          "resolved": {
+            "type": "boolean"
+          },
+          "mitigation": {
+            "$ref": "#/$defs/text"
+          }
+        }
+      }
+    },
+    "phases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "depends_on"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/id"
+          },
+          "text": {
+            "$ref": "#/$defs/text"
+          },
+          "depends_on": {
+            "$ref": "#/$defs/ids"
+          },
+          "criteria": {
+            "$ref": "#/$defs/ids"
+          },
+          "scope": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/text"
+            }
+          },
+          "checks": {
+            "$ref": "#/$defs/ids"
+          }
+        }
+      }
+    },
+    "contract_status": {
+      "enum": [
+        "draft",
+        "final"
+      ]
+    },
+    "work_type": {
+      "enum": [
+        "feature",
+        "bugfix",
+        "refactor",
+        "docs"
+      ]
+    },
+    "domain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "classification",
+        "rationale",
+        "refs"
+      ],
+      "properties": {
+        "classification": {
+          "enum": [
+            "core",
+            "supporting",
+            "generic",
+            "unknown"
+          ]
+        },
+        "rationale": {
+          "$ref": "#/$defs/text"
+        },
+        "refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/text"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "intent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "non_goals",
+        "constraints",
+        "user_decisions"
+      ],
+      "properties": {
+        "non_goals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/text"
+          },
+          "uniqueItems": true
+        },
+        "constraints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/text"
+          },
+          "uniqueItems": true
+        },
+        "user_decisions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/text"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "workflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "required_artifacts"
+      ],
+      "properties": {
+        "profile": {
+          "enum": [
+            "light",
+            "feature",
+            "bugfix",
+            "refactor",
+            "docs"
+          ]
+        },
+        "required_artifacts": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "context",
+              "design",
+              "qa-plan",
+              "implementation-plan",
+              "qa-recheck",
+              "review-packet"
+            ]
+          }
+        }
+      }
+    },
+    "review_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assurance",
+        "requirements",
+        "human_design",
+        "human_final"
+      ],
+      "properties": {
+        "assurance": {
+          "enum": [
+            "manual",
+            "verified"
+          ]
+        },
+        "requirements": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "target_id",
+              "judges"
+            ],
+            "properties": {
+              "target_id": {
+                "$ref": "#/$defs/id"
+              },
+              "judges": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "enum": [
+                    "code",
+                    "agent",
+                    "human"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "human_design": {
+          "type": "boolean"
+        },
+        "human_final": {
+          "type": "boolean"
+        }
+      }
+    },
+    "quality_profiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "required",
+          "check_ids",
+          "capability"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/id"
+          },
+          "kind": {
+            "enum": [
+              "tests",
+              "lint",
+              "mutation",
+              "complexity",
+              "crap",
+              "sast",
+              "dast",
+              "environment"
+            ]
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "check_ids": {
+            "$ref": "#/$defs/ids"
+          },
+          "capability": {
+            "enum": [
+              "available",
+              "unsupported",
+              "unknown",
+              "not_applicable"
+            ]
+          },
+          "rationale": {
+            "$ref": "#/$defs/text"
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "contract_status": {
+            "const": "final"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "criteria": {
+            "minItems": 1
+          }
+        }
+      }
+    }
+  ]
+}

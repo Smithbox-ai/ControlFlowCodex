@@ -1,11 +1,20 @@
 # Native hook integration
 
-The supported adapter is a local PowerShell 7 command hook. Its definition is
+Host compatibility: Codex `0.166.0-alpha.5.1` skips bundled hooks for root
+AgentPlugin manifests. The explicit [NativeLegacy package flavor](release.md#explicit-native-compatibility-flavor-candidate)
+uses the supported `.codex-plugin/plugin.json` loader path and bounds recursive
+skill/MCP discovery. It does not grant hook trust. Exact native review/trust and
+real callback smoke are still required; discovery alone is not callback PASS.
+
+The supported adapter is a local PowerShell 7.4 or newer command hook;
+7.6.9 is the tested version. Its definition is
 `hooks/hooks.json`; command paths derive from the native `PLUGIN_ROOT` environment.
 It consumes JSON on stdin and emits one JSON object on stdout. It does not parse
 session transcripts or intercept commit command text.
 
-Native callback `session_id` and `cwd` select an already active v3 run. An absent
+Native callback `session_id` and `cwd` select an already active V4 run or an
+existing V3 run with matching runtime and contract versions. Existing V3 runs
+remain visibly `legacy_semantics`; a callback never creates a new legacy run. An absent
 marker leaves the session unmanaged. A corrupt marker, invalid reference, wrong
 binding, or missing identity is UNVERIFIABLE. No older v2 plan is adopted and no
 foreign session is updated.
@@ -54,3 +63,21 @@ An E2E run using manual fallback is not proof of automatic Stop enforcement.
 
 Sources: [Codex hooks](https://learn.chatgpt.com/docs/hooks) and
 [portable plugin packaging](https://developers.openai.com/plugins/build/plugins).
+
+## V4 assurance and host limits
+
+V4 HUMAN_WAIT is a lawful incomplete stop; SessionStart cannot resume it. Manual
+decisions bind exact current artifacts/epoch/intent/policy; verified mode blocks
+without a trusted receipt verifier. Hashes, local human=true and app-server
+serverRequest/resolved do not authenticate consent. Repeated valid completed Stop
+callbacks are idempotent; stale completion becomes BLOCKED without reopening.
+
+All matching native hooks are additive and may execute concurrently. Trust binds
+the exact definition; changed hooks require native review. No trust is modified by
+this package. Cloud orchestration does not support local/plugin command hooks.
+Adapter tests simulate payloads and do not prove actual host callback dispatch.
+
+Pending human targets and first stop source persist across other stop reasons.
+Repeated interrupt notices preserve the original unacknowledged boundary. The
+fast path uses last-observed source and can conservatively reject unobserved
+legitimate carried edits; it does not perform Git/source hashing inside Interrupt.

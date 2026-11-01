@@ -1,0 +1,77 @@
+{
+  "schema_version": "4.0.0",
+  "task_id": "small-feature",
+  "goal": "Implement one bounded behavior with independent expected QA outcomes",
+  "tier": "SMALL",
+  "baseline": {
+    "commit": "0000000000000000000000000000000000000000",
+    "dirty_paths": []
+  },
+  "scope": [
+    "src/**",
+    "tests/**"
+  ],
+  "criteria": [
+    {
+      "id": "C1",
+      "text": "The requested behavior is demonstrated by the targeted check"
+    }
+  ],
+  "checks": [
+    {
+      "id": "check-1",
+      "command": "pwsh -NoProfile -File tests/targeted.tests.ps1",
+      "working_directory": ".",
+      "timeout_seconds": 120,
+      "criteria": [
+        "C1"
+      ]
+    }
+  ],
+  "commit": {
+    "mode": "none"
+  },
+  "contract_status": "draft",
+  "work_type": "feature",
+  "domain": {
+    "refs": [
+      "src/component.ps1"
+    ],
+    "classification": "supporting",
+    "rationale": "One bounded supporting component; review actual risks before finalization"
+  },
+  "intent": {
+    "non_goals": [
+      "No second orchestrator"
+    ],
+    "constraints": [
+      "Native ownership and permissions"
+    ],
+    "user_decisions": []
+  },
+  "workflow": {
+    "profile": "feature",
+    "required_artifacts": [
+      "context",
+      "design",
+      "qa-plan",
+      "implementation-plan",
+      "qa-recheck",
+      "review-packet"
+    ]
+  },
+  "review_policy": {
+    "assurance": "manual",
+    "human_design": true,
+    "human_final": false,
+    "requirements": [
+      {
+        "target_id": "C1",
+        "judges": [
+          "code"
+        ]
+      }
+    ]
+  },
+  "quality_profiles": []
+}

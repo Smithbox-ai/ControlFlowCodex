@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$NativeDirectory,
-    [Parameter(Mandatory)][string]$V3Directory,
+    [Parameter(Mandatory)][string]$V4Directory,
     [string]$ReviewsDirectory='',
     [Parameter(Mandatory)][string]$OutputPath
 )
@@ -10,8 +10,8 @@ $ErrorActionPreference='Stop'
 if(Test-Path -LiteralPath $OutputPath){throw 'Comparison output must be new; evidence is immutable'}
 $catalog=@(Get-E2EReleaseDiagnosticCases)
 $all=[Collections.Generic.List[object]]::new();$grades=[Collections.Generic.List[object]]::new();$counts=@{};$trials=$null
-foreach($arm in @('native','v3')){
-    $directory=if($arm -eq 'native'){$NativeDirectory}else{$V3Directory}
+foreach($arm in @('native','v4')){
+    $directory=if($arm -eq 'native'){$NativeDirectory}else{$V4Directory}
     $manifest=Get-Content -LiteralPath (Join-Path $directory 'manifest.json') -Raw|ConvertFrom-Json -AsHashtable -Depth 100
     if($manifest.suite -cne 'Diagnostics' -or $manifest.variant -cne $arm -or $manifest.trials -le 0){throw 'Expected a declared diagnostic cohort with matching variant'}
     foreach($field in @('model','effort','host','cli_version','project_trust','sandbox','approval_policy','approvals_reviewer')){if($manifest[$field] -isnot [string] -or [string]::IsNullOrWhiteSpace($manifest[$field])){throw "Diagnostic manifest missing $field provenance"}}
@@ -51,7 +51,7 @@ foreach($arm in @('native','v3')){
     $counts[$arm]=@{expected_criteria=$expected;observed_criteria=$observed;collected_criteria=$collected;reviewed_criteria=$reviewed;identified_criteria=$identified;unobserved_criteria=$expected-$observed;collection_coverage=$collected/$expected;semantic_coverage=$reviewed/$expected;recall=if($complete){$identified/$expected}else{$null};observed_subset_recall=if($reviewed){$identified/$reviewed}else{$null};complete=$complete}
 }
 $pairs=Measure-E2EPairs -Results $all.ToArray()
-$complete=$counts.native.complete -and $counts.v3.complete -and $pairs.unpaired_records -eq 0 -and $pairs.incomplete_metrics_pairs -eq 0
-$comparison=@{schema_version='1.0.0';protocol='release-risk-diagnostics-1.0.0';arms=$counts;diagnostic_metrics_complete=$complete;critical_risk_recall_delta=if($complete){$counts.v3.recall-$counts.native.recall}else{$null};criteria_source='predeclared HIGH-risk diagnostic cases';semantic_judge='independent human annotations bound to source, diagnostic artifact and immutable result hashes; no model or regex judge';pairing=$pairs;observations=$grades.ToArray();production_ready=$false}
+$complete=$counts.native.complete -and $counts.v4.complete -and $pairs.unpaired_records -eq 0 -and $pairs.incomplete_metrics_pairs -eq 0
+$comparison=@{schema_version='2.0.0';protocol='release-risk-diagnostics-2.0.0';arms=$counts;diagnostic_metrics_complete=$complete;critical_risk_recall_delta=if($complete){$counts.v4.recall-$counts.native.recall}else{$null};criteria_source='predeclared HIGH-risk diagnostic cases';semantic_judge='independent human annotations bound to source, diagnostic artifact and immutable result hashes; no model or regex judge';pairing=$pairs;observations=$grades.ToArray();status=$pairs.status;reason=$pairs.reason;production_ready=$false}
 Write-E2EText $OutputPath ($comparison|ConvertTo-Json -Depth 40)
 Write-Output "Diagnostic coverage/recall comparison: $OutputPath"
