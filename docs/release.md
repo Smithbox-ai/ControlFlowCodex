@@ -1,6 +1,6 @@
 # Release publication
 
-Current candidate package is `4.0.0-rc.2`, with V4-only new-run creation and
+Current candidate package is `4.0.0-rc.3`, with V4-only new-run creation and
 read/continue compatibility for existing V3 runs. Contract/runtime version
 `4.0.0` is separate from package and artifact-wire versions. This section
 describes publication checks; a candidate build or changelog entry does not
@@ -36,11 +36,17 @@ pwsh -NoProfile -File <extracted>/scripts/install.ps1 -Flavor NativeLegacy -Home
 pwsh -NoProfile -File <extracted>/scripts/install.ps1 -Flavor NativeLegacy -HomeRoot <home> -Force
 ```
 
-Installer default is `Universal`; missing root metadata never selects legacy
-implicitly. An existing installation needs explicit `-Flavor` and `-Force` to
-change format. Dry-run validates without writing a lock or home files. Install
-validates staging and replaces the complete owned tree, so an old root manifest
-cannot remain. Registration failure restores the previous installation.
+Fresh canonical source defaults to `Universal`; a fresh NativeLegacy artifact
+requires explicit selection. Omitted `-Flavor` preserves an existing owned
+installation's format and reports that choice. A genuine change still needs
+explicit `-Flavor` and `-Force`. Canonical Universal source may stage NativeLegacy
+by excluding only root metadata and strictly validating the resulting surface.
+Dry-run validates without writing a lock or home files; conversion may use owned
+temporary staging. Install replaces the active tree cleanly and retains previous
+`source/` and exact `marketplace.json` bytes in its reported recovery directory.
+Registration failure restores the previous active installation. Unknown/custom
+files are preserved in recovery backups. `-Uninstall -Force` removes managed local
+source/registration only; native cache/trust/config/run data remain untouched.
 
 Before real rollout preserve the owned source, marketplace and hashes. Refresh
 native cache only with supported `codex plugin add`, then compare the full file
@@ -68,7 +74,7 @@ rewritten. Untracked or modified checkout files are excluded. A missing or
 duplicate notes section fails the release. The checksum format is
 `<lowercase sha256>  <archive filename>`.
 
-Only prerelease versions such as `4.0.0-rc.2` are currently allowed. Stable
+Only prerelease versions such as `4.0.0-rc.3` are currently allowed. Stable
 versions are blocked before the workflow creates a tag or GitHub Release:
 `Stable releases are blocked until a verified release evidence protocol covers
 real paired A/B trials and host callbacks.` A manually provided approval flag

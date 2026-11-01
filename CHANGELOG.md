@@ -28,6 +28,19 @@
   Profile preflight and conformance review check material complexity beyond
   accepted scope; safe light docs retain a compact route without extra readers.
 
+## 4.0.0-rc.3 - installer lifecycle candidate
+
+- Preserve the installed flavor for ordinary `install.ps1 -Force` upgrades and
+  report its selection; explicit cross-flavor changes still require both flags.
+- Support strictly validated NativeLegacy staging from canonical Universal source,
+  while keeping explicit fresh NativeLegacy selection and capability restrictions.
+- Retain complete previous source and exact registration bytes for recoverable
+  upgrade/uninstall, preserving unknown files and custom marketplace fields.
+- Make missing uninstall a no-op, support exact self-uninstall, and reject foreign
+  or duplicate registrations and flavor changes between inspection and lock.
+- Document local-source versus native cache/trust removal and add lifecycle
+  regressions. Native callback/trust acceptance remains separate from packaging.
+
 ## 4.0.0-rc.2 - V4 candidate, not yet published
 
 - Make contract/runtime 4.0.0 the default and only new-run workflow. Keep

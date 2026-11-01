@@ -6,7 +6,7 @@ if(-not $IsMacOS -or $env:GITHUB_REPOSITORY -cne 'Smithbox-ai/ControlFlowCodex' 
 $sourceZip=Join-Path $PSScriptRoot 'source.zip'
 $manifestPath=Join-Path $PSScriptRoot 'source-manifest.json'
 $zipHash=(Get-FileHash -LiteralPath $sourceZip -Algorithm SHA256).Hash.ToLowerInvariant()
-if($zipHash -cne 'cd14d21b45d325bb63caec39063b1cee936c2dbe1bd0708f61cb87a51d975849'){throw 'SOURCE_ARCHIVE_HASH_MISMATCH'}
+if($zipHash -cne '7c2c3ae96e1ce08cf7711cb0180ef518fdca57aece7dc592953b3644979b3d59'){throw 'SOURCE_ARCHIVE_HASH_MISMATCH'}
 $physicalTemp=(& /bin/sh -c 'cd "$1" && pwd -P' sh $env:RUNNER_TEMP)
 if($LASTEXITCODE -or -not [IO.Path]::IsPathFullyQualified($physicalTemp)){throw 'PHYSICAL_TEMP_UNAVAILABLE'}
 $root=[IO.Path]::GetFullPath($env:CF_VALIDATION_ROOT)
@@ -30,14 +30,14 @@ $pesterRoot=Join-Path $root 'Pester';[IO.Compression.ZipFile]::ExtractToDirector
 Import-Module (Join-Path $pesterRoot 'Pester.psd1') -Force
 if((Get-Module Pester).Version.ToString() -cne '5.9.1'){throw 'WRONG_PESTER_VERSION'}
 $os=& /usr/bin/sw_vers
-$summary=[ordered]@{status='RUNNING';mode=$mode;started_at=[datetime]::UtcNow.ToString('o');commit=$env:GITHUB_SHA;repository=$env:GITHUB_REPOSITORY;source_zip_sha256=$zipHash;source_files=117;baseline=$baseline;macos=@($os);kernel_release=(& /usr/bin/uname -r);architecture=[Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString();process_architecture=[Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString();image_os=$env:ImageOS;image_version=$env:ImageVersion;pwsh=$PSVersionTable.PSVersion.ToString();git=(& git --version);pester='5.9.1';pester_nupkg_sha256='8dd4060fc3bc895f05bd655e4ab82abe346de54a4e6415dfb727cc8378672b69';models=0;artifact_uploads=0;cache_uploads=0;packages=@();corpora=@();native_callbacks='NOT_RUN'}
+$summary=[ordered]@{status='RUNNING';mode=$mode;started_at=[datetime]::UtcNow.ToString('o');commit=$env:GITHUB_SHA;repository=$env:GITHUB_REPOSITORY;source_zip_sha256=$zipHash;source_files=118;baseline=$baseline;macos=@($os);kernel_release=(& /usr/bin/uname -r);architecture=[Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString();process_architecture=[Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString();image_os=$env:ImageOS;image_version=$env:ImageVersion;pwsh=$PSVersionTable.PSVersion.ToString();git=(& git --version);pester='5.9.1';pester_nupkg_sha256='8dd4060fc3bc895f05bd655e4ab82abe346de54a4e6415dfb727cc8378672b69';models=0;artifact_uploads=0;cache_uploads=0;packages=@();corpora=@();native_callbacks='NOT_RUN'}
 Write-Output ('ENVIRONMENT_JSON '+($summary|ConvertTo-Json -Depth 5 -Compress))
 $progress=Join-Path $root 'suites.txt';$env:CF_MACOS_PROGRESS=$progress
 $runner=Join-Path $repo 'tests/run-contract-tests.ps1';$lines=[IO.File]::ReadAllLines($runner);$line=0
 for($n=0;$n -lt $lines.Length;$n++){if($lines[$n].Trim() -ceq '$path = Join-Path $testRoot $Name'){$line=$n+1;break}}
 if(-not $line){throw 'SUITE_OBSERVATION_POINT_MISSING'}
 $expected=@([regex]::Matches([IO.File]::ReadAllText($runner),'(?m)^Invoke-ContractScript "([^"]+)"')|ForEach-Object{$_.Groups[1].Value})
-if($expected.Count -ne 35){throw 'WRONG_EXPECTED_SUITE_COUNT'}
+if($expected.Count -ne 36){throw 'WRONG_EXPECTED_SUITE_COUNT'}
 try {
     if($mode -ceq 'diagnostic'){
         . (Join-Path $PSScriptRoot 'Invoke-CleanupDiagnostic.ps1')
@@ -49,7 +49,7 @@ try {
         if(@(Get-PSBreakpoint).Count){throw 'AGGREGATE_MUST_HAVE_NO_DEBUG_BREAKPOINTS'}
         $env:CONTROLFLOW_TEST_PROGRESS='1'
         $r=Invoke-Pester -Path (Join-Path $repo 'tests/controlflow-contract.Tests.ps1') -Output Detailed -PassThru
-        $summary.pester_result=@{status=$r.Result;passed=$r.PassedCount;failed=$r.FailedCount;skipped=$r.SkippedCount;not_run=$r.NotRunCount;registered_suites=$expected;execution_evidence='Unchanged original wrapper and frozen runner with35 unconditional calls; no debugger observers'}
+        $summary.pester_result=@{status=$r.Result;passed=$r.PassedCount;failed=$r.FailedCount;skipped=$r.SkippedCount;not_run=$r.NotRunCount;registered_suites=$expected;execution_evidence='Unchanged original wrapper and frozen runner with36 unconditional calls; no debugger observers'}
         if($r.Result -cne 'Passed' -or $r.PassedCount -ne 1 -or $r.FailedCount -ne 0 -or $r.SkippedCount -ne 0 -or $r.NotRunCount -ne 0){throw 'ORIGINAL_PESTER_WRAPPER_FAILED_OR_INCOMPLETE'}
     foreach($suite in @('Pilot','Release')){
         $global:LASTEXITCODE=0
@@ -61,7 +61,7 @@ try {
     if($LASTEXITCODE){throw 'DIAGNOSTICS_CORPUS_FAILED'};$summary.corpora+=@{name='Diagnostics';status='PASS_VALIDATE_ONLY'}
     foreach($flavor in @('Universal','NativeLegacy')){
         $out=Join-Path $root ('packages-'+$flavor);$global:LASTEXITCODE=0
-        & (Join-Path $repo 'scripts/package.ps1') -OutputDirectory $out -Version '4.0.0-rc.2' -Flavor $flavor
+        & (Join-Path $repo 'scripts/package.ps1') -OutputDirectory $out -Version '4.0.0-rc.3' -Flavor $flavor
         if($LASTEXITCODE){throw "PACKAGE_FAILED:$flavor"}
         $zip=@(Get-ChildItem -LiteralPath $out -Filter '*.zip' -File)
         if($zip.Count -ne 1){throw 'PACKAGE_OUTPUT_COUNT'}
@@ -73,7 +73,7 @@ try {
         $archive=[IO.Compression.ZipFile]::OpenRead($zip[0].FullName)
         try {
             $entries=@($archive.Entries|Where-Object{-not $_.FullName.EndsWith('/')})
-            $count=if($flavor -ceq 'Universal'){113}else{112}
+            $count=if($flavor -ceq 'Universal'){114}else{113}
             if($entries.Count -ne $count -or $inventory.files.Count -ne $count){throw 'PACKAGE_FILE_COUNT'}
             $seen=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
             foreach($entry in $entries){

@@ -8,7 +8,7 @@ preserve existing user work, and resume without treating missing checks as done.
 Native Codex owns tools, sandboxing, permission decisions, execution, review,
 and agent lifecycle. ControlFlow does not add a second orchestrator.
 
-**Package `4.0.0-rc.2` is a candidate. V4 is the default for every new run.**
+**Package `4.0.0-rc.3` is a candidate. V4 is the default for every new run.**
 New contracts use schema/runtime `4.0.0`. Existing V3 runs remain readable and
 retain their original rules, visibly marked `legacy_semantics`; they are not
 upgraded in place. New V3 runs, templates and examples are no longer offered.
@@ -56,7 +56,11 @@ See [V4 interfaces and payloads](docs/v4-runtime.md).
 
 ### First run
 
-1. Install from a trusted checkout with `pwsh -NoProfile -File scripts/install.ps1 -Force`.
+1. For Codex `0.166.0-alpha.5.1`, install from a trusted checkout with
+   `pwsh -NoProfile -File scripts/install.ps1 -Flavor NativeLegacy -Force`.
+   An existing owned installation can be updated with `-Force` alone: its flavor
+   is preserved and reported. A fresh checkout defaults to Universal; it does not
+   detect the host automatically.
    Enable the plugin in your Codex host. Review and trust its current hook definition
    in the host before relying on automatic enforcement; installation alone does not
    establish trust. See [hook setup and limitations](docs/hooks.md).
@@ -241,16 +245,26 @@ choice, not a trust bypass or automatic fallback. See
 before choosing a flavor.
 
 ```powershell
+# Fresh install for Codex 0.166.0-alpha.5.1 (canonical checkout is supported).
+pwsh -NoProfile -File scripts/install.ps1 -Flavor NativeLegacy -Force
+# Upgrade: preserve the existing flavor.
 pwsh -NoProfile -File scripts/install.ps1 -Force
+# Remove managed local source/registration and retain a recovery backup.
 pwsh -NoProfile -File scripts/install.ps1 -Uninstall -Force
 pwsh -NoProfile -File scripts/package.ps1
 ```
 
 For that specific native host, build with `scripts/package.ps1 -Flavor
-NativeLegacy` and install the verified extracted package with
-`scripts/install.ps1 -Flavor NativeLegacy -Force`. Both commands require explicit
-selection; installation/enabling still requires exact native hook trust and
-callback verification. Do not change flavors by editing installed cache files.
+NativeLegacy` or explicitly select `-Flavor NativeLegacy` when installing from
+the canonical checkout. The installer validates Universal source, omits only its
+root manifest in staging and strictly validates the NativeLegacy result. A fresh
+NativeLegacy artifact requires explicit selection; an existing install preserves
+its flavor unless a different `-Flavor` is explicitly supplied with `-Force`.
+Every replacement/removal retains the prior `source/` and exact `marketplace.json`
+in the reported recovery directory, including custom files. Uninstall does not
+remove native cache, trust, configuration or run data; use the host's supported
+remove flow to deactivate its cached copy. Installation/enabling still requires
+exact native hook trust and callback verification. Do not edit cache or trust files.
 
 `-HomeRoot <path>` supports isolated installation. The installer validates
 ownership and containment, stages the shared inventory, and rolls back a failed

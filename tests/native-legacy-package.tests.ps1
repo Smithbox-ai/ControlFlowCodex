@@ -89,8 +89,9 @@ try{
   Check (-not (Test-Path -LiteralPath (Join-Path $target 'plugin.json'))) 'Flavor replacement retained stale root manifest'
   foreach($p in $expected){Check ((Bytes (Join-Path $legacy $p)) -ceq (Bytes (Join-Path $target $p))) "Installed flavor bytes differ: $p"}
   $preserved=Tree $target;$marketBefore=Bytes $market
-  Reject {& (Join-Path $repo 'scripts/install.ps1') -HomeRoot $homeFixture -Force} 'Implicit cross-flavor replacement was accepted'
-  Check ((Tree $target) -ceq $preserved -and (Bytes $market) -ceq $marketBefore) 'Rejected implicit switch mutated installation'
+  $implicit=@(& (Join-Path $repo 'scripts/install.ps1') -HomeRoot $homeFixture -Force)
+  Check (($implicit -join ' ') -match 'NativeLegacy' -and ($implicit -join ' ') -match 'preserved') 'Implicit upgrade did not report preserved NativeLegacy'
+  Check ((Tree $target) -ceq $preserved -and (Bytes $market) -ceq $marketBefore) 'Implicit upgrade changed selected flavor/shared bytes or registration'
   & (Join-Path $repo 'scripts/install.ps1') -Flavor Universal -HomeRoot $homeFixture -Force|Out-Null
   Check (Test-Path -LiteralPath (Join-Path $target 'plugin.json') -PathType Leaf) 'Explicit Universal rollback did not restore root manifest'
   $mp=Get-Content -LiteralPath $market -Raw|ConvertFrom-Json

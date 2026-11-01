@@ -1,6 +1,6 @@
 {
   "name": "controlflow-codex",
-  "version": "4.0.0-rc.2",
+  "version": "4.0.0-rc.3",
   "description": "Explicit native Codex reliability layer: adaptive task contracts, captured evidence, completion gates, and bounded lifecycle hooks.",
   "author": {
     "name": "Smithbox-ai",

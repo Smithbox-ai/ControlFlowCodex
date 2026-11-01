@@ -28,6 +28,7 @@ function Invoke-ContractScript([string]$Name) {
 Invoke-ContractScript "controlflow-skill-contract.tests.ps1"
 Invoke-ContractScript "template-contract.tests.ps1"
 Invoke-ContractScript "installer-smoke.tests.ps1"
+Invoke-ContractScript "installer-lifecycle.tests.ps1"
 Invoke-ContractScript "git-evidence.tests.ps1"
 Invoke-ContractScript "storage.tests.ps1"
 Invoke-ContractScript "legacy-contract-compat.tests.ps1"

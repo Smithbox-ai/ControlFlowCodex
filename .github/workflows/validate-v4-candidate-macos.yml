@@ -32,7 +32,7 @@ jobs:
 
   candidate-aggregate:
     needs: cleanup-diagnostic
-    if: needs.cleanup-diagnostic.result == 'success' && needs.cleanup-diagnostic.outputs.diagnostic_passed == 'true' && needs.cleanup-diagnostic.outputs.source_sha256 == 'cd14d21b45d325bb63caec39063b1cee936c2dbe1bd0708f61cb87a51d975849' && needs.cleanup-diagnostic.outputs.commit == github.sha
+    if: needs.cleanup-diagnostic.result == 'success' && needs.cleanup-diagnostic.outputs.diagnostic_passed == 'true' && needs.cleanup-diagnostic.outputs.source_sha256 == '7c2c3ae96e1ce08cf7711cb0180ef518fdca57aece7dc592953b3644979b3d59' && needs.cleanup-diagnostic.outputs.commit == github.sha
     runs-on: macos-15
     timeout-minutes: 40
     steps:
@@ -43,7 +43,7 @@ jobs:
           persist-credentials: false
           lfs: false
           submodules: false
-      - name: Original35-suite aggregate, reference corpora and both packages
+      - name: Original36-suite aggregate, reference corpora and both packages
         shell: bash
         env:
           CF_VALIDATION_MODE: aggregate
