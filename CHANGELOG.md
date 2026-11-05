@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Read JUnit/NUnit root element names through the XML DOM, so standard `name`
+  attributes cannot hide or spoof the element name in PowerShell.
+- Reject unsupported JUnit nonexecution statuses and disabled counts instead of
+  reporting skipped/disabled work as executed tests.
+- Allow current build/diff command captures in QA bindings without a synthetic
+  test report; checks with declared reports still require passing report evidence.
+
 - Bind declared check input file hashes to captures and completion, including
   ignored files, and bound process output collection by the check deadline.
 - Add a read-only readiness diagnostic and a human-readable completion-gate view,

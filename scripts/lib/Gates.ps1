@@ -33,7 +33,7 @@ function Get-CFV4GateReasons($Read,$ContractRead,$Source,$Fresh) {
         if($kind -in @('qa-recheck','review-packet') -and ($artifacts[$kind].artifact.source_digest -cne $Source.digest -or $artifacts[$kind].contract_digest -cne $ContractRead.digest)){('ARTIFACT_SOURCE_STALE:'+$kind)}
     }
     if($artifacts.ContainsKey('review-packet') -and $artifacts['review-packet'].artifact.payload.open_decisions.Count -gt 0){'OPEN_PACKET_DECISIONS'}
-    if($artifacts.ContainsKey('qa-plan')){foreach($scenario in $artifacts['qa-plan'].artifact.payload.scenarios){foreach($id in $scenario.check_refs){if(-not (Test-CFV4Capture $Read $ContractRead $Source $id -RequireReport)){('QA_CAPTURE_MISSING_OR_STALE:'+$id)}}}}
+    if($artifacts.ContainsKey('qa-plan')){foreach($scenario in $artifacts['qa-plan'].artifact.payload.scenarios){foreach($id in $scenario.check_refs){if(-not (Test-CFV4Capture $Read $ContractRead $Source $id)){('QA_CAPTURE_MISSING_OR_STALE:'+$id)}}}}
     if($c.review_policy.human_design -and (-not $artifacts.ContainsKey('design') -or -not (Test-CFV4Review $Read $ContractRead $artifacts.design.ref human design))){'HUMAN_DESIGN_REQUIRED'}
     foreach($req in $c.review_policy.requirements){foreach($judge in $req.judges){
         if($judge -ceq 'code'){

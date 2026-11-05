@@ -56,3 +56,9 @@ assertions. Required unsupported profiles block; optional gaps stay visible.
 Mutation reports describe test sensitivity. Controlled PowerShell gate/ledger
 mutations are a separate bounded pilot, not universal language-tool support.
 No universal mutation score or CRAP threshold is imposed.
+
+QA `check_refs` can also include build/diff commands without a `report`. Their
+current captures prove process outcome and freshness, not test counts. Every
+declared report remains mandatory, including for QA rechecks and completion.
+Declare reports for checks whose acceptance depends on discovered/executed tests;
+do not substitute a synthetic test report for an ordinary command check.

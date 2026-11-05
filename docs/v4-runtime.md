@@ -49,7 +49,7 @@ Refs cannot traverse or follow links, and foreign/tampered refs fail closed.
 | design | Current context; behavior/boundaries/data, selected solution, alternative, risk/rollback |
 | qa-plan | Current design plus required human design decision; external expected results and sources, inputs, negative/boundary cases, criterion/check IDs |
 | implementation-plan | Current QA; ordered parts, exact components, earlier dependencies, readiness, criterion IDs |
-| qa-recheck | Current QA and implementation; one disposition per original scenario, unchanged expected value, current captured report evidence |
+| qa-recheck | Current QA and implementation; one disposition per original scenario, unchanged expected value, current declared check captures (including reports when declared) |
 | review-packet | Current recheck (light needs none); behavior/invariants/diff, results/limitations/open decisions/rollback |
 
 Artifact source identity is observed when saved. Context/design stay linked to
@@ -117,6 +117,10 @@ Supported count parsing is deliberately narrow: one JUnit testsuite with direct
 testcase children and matching summary counts; NUnit 3 test-run with matching
 case/result counts and nonzero asserts; Stryker JSON mutant status counts. Unknown
 shapes/statuses fail closed. JUnit counts cases but cannot establish assertions.
+The JUnit subset accepts optional case `status="run"` and `result="completed"`
+or `result="skipped"` consistent with its skipped child; other explicit execution
+statuses/results and nonzero suite `disabled` counts are unsupported. They cannot
+be silently counted as completed tests.
 NUnit counts are report claims, not semantic proof. Pending mutation results are
 NOT_RUN. Invalid/ignored/no-coverage/survived/timeouts remain visible; Stryker's
 timeout-as-detected metric differs from an incomplete wrapper run.
@@ -129,7 +133,14 @@ complexity/CRAP/SAST/DAST report adapters are currently UNSUPPORTED, even when
 capability was optimistically declared available. Empty optional profiles are
 NOT_RUN, not PASS. Tool/version metadata are declared by the contract and retained
 with raw outputs; they are not independently authenticated executable identity. Unknown tools/formats are not invented PASS.
-QA scenarios require actual current declared report captures. Review packets add
+QA scenarios require actual current captures for every declared `check_refs` entry.
+Build, diff and other command checks without a `report` use their captured process
+outcome and the same contract, command, source and declared-input freshness checks.
+They do not establish test counts or assertions. A check that declares a `report`
+also requires a recognized passing report and saved raw bytes; QA does not waive
+that requirement. Test-count assurance requires a declared report (or an available
+tests quality profile); do not manufacture test reports for build/diff commands.
+Review packets add
 runtime-generated evidence_summary from saved captures; prose cannot replace it.
 
 Own PowerShell controlled mutants are a separate isolated sensitivity pilot, not

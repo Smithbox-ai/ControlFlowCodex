@@ -228,7 +228,7 @@ function Update-CFV4Event([string]$RepoRoot,[string]$RunPath,$Read,$Event,$Copy)
                         $ds=@($a.payload.dispositions|Where-Object {$_.scenario_id -ceq $scenario.id})
                         if($ds.Count -ne 1 -or $ds[0].expected -cne $scenario.expected){throw 'QA_EXPECTATION_CHANGED'}
                         if($ds[0].status -cne 'PASS' -or $ds[0].drift -cne 'none'){throw 'QA_RECHECK_UNRESOLVED'}
-                        foreach($id in $scenario.check_refs){if($id -cnotin $ds[0].evidence_refs -or -not (Test-CFV4Capture $Read $c $source $id -RequireReport)){throw 'QA_EVIDENCE_MISSING'}}
+                        foreach($id in $scenario.check_refs){if($id -cnotin $ds[0].evidence_refs -or -not (Test-CFV4Capture $Read $c $source $id)){throw 'QA_EVIDENCE_MISSING'}}
                         if($scenario.check_refs.Count -eq 0){foreach($id in $scenario.criterion_refs){if(Test-CFV4CodeCriterion $contract $id){throw 'CODE_SCENARIO_CHECK_REQUIRED'}}}
                     }
                     if($a.payload.dispositions.Count -ne $qa.artifact.payload.scenarios.Count){throw 'QA_DISPOSITION_SET_MISMATCH'}
@@ -354,14 +354,24 @@ function Read-ControlFlowQualityReport {
         $root=$doc.DocumentElement
         function CountAttr($Node,[string]$Name){$n=0;if(-not [int]::TryParse($Node.GetAttribute($Name),[ref]$n) -or $n -lt 0){throw 'INVALID_REPORT_COUNT'};return $n}
         if($Format -ceq 'junit'){
-            if($root.Name -cne 'testsuite'){throw 'UNSUPPORTED_JUNIT_SHAPE'}
+            # XML attributes/children such as name shadow CLR properties in PowerShell.
+            if($root.get_Name() -cne 'testsuite'){throw 'UNSUPPORTED_JUNIT_SHAPE'}
             $cases=@($root.SelectNodes('./testcase'));$total=CountAttr $root tests;$fail=CountAttr $root failures;$errors=CountAttr $root errors;$skipped=CountAttr $root skipped
+            if($root.HasAttribute('disabled') -and (CountAttr $root disabled) -gt 0){throw 'UNSUPPORTED_JUNIT_DISABLED'}
+            foreach($case in $cases){
+                if($case.HasAttribute('status') -and $case.GetAttribute('status') -cne 'run'){throw 'UNSUPPORTED_JUNIT_STATUS'}
+                if($case.HasAttribute('result')){
+                    $result=$case.GetAttribute('result')
+                    if($result -cnotin @('completed','skipped')){throw 'UNSUPPORTED_JUNIT_RESULT'}
+                    if(($result -ceq 'skipped') -ne ($case.SelectNodes('./skipped').Count -gt 0)){throw 'INCOMPLETE_REPORT'}
+                }
+            }
             if($total -ne $cases.Count -or $fail -ne @($root.SelectNodes('./testcase/failure')).Count -or $errors -ne @($root.SelectNodes('./testcase/error')).Count -or $skipped -ne @($root.SelectNodes('./testcase/skipped')).Count -or ($fail+$errors+$skipped) -gt $total){throw 'INCOMPLETE_REPORT'}
             $q.executed_tests=$total-$skipped;$q.status=if($q.executed_tests -lt $MinimumTests -or ($fail+$errors) -gt 0){'FAIL'}else{'PASS'}
             $q.counts=@{total=$total;failed=$fail;errors=$errors;skipped=$skipped}
             $q.limitations=@('JUnit test cases do not prove assertion count or semantic adequacy.')
         }else{
-            if($root.Name -cne 'test-run'){throw 'UNSUPPORTED_NUNIT_SHAPE'}
+            if($root.get_Name() -cne 'test-run'){throw 'UNSUPPORTED_NUNIT_SHAPE'}
             $cases=@($root.SelectNodes('.//test-case'));$total=CountAttr $root total;$passed=CountAttr $root passed;$failed=CountAttr $root failed;$skipped=CountAttr $root skipped;$inc=CountAttr $root inconclusive;$asserts=CountAttr $root asserts
             if($total -ne $cases.Count -or $total -ne ($passed+$failed+$skipped+$inc)){throw 'INCOMPLETE_REPORT'}
             foreach($pair in @(@('Passed',$passed),@('Failed',$failed),@('Skipped',$skipped),@('Inconclusive',$inc))){if(@($cases|Where-Object {$_.GetAttribute('result') -ceq $pair[0]}).Count -ne $pair[1]){throw 'INCOMPLETE_REPORT'}}
