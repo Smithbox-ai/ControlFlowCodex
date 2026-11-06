@@ -26,6 +26,12 @@
       "type": "string",
       "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
     },
+    "review_target_id": {
+      "allOf": [
+        { "$ref": "#/$defs/id" },
+        { "not": { "const": "design" } }
+      ]
+    },
     "text": {
       "type": "string",
       "minLength": 1,
@@ -98,7 +104,7 @@
         ],
         "properties": {
           "id": {
-            "$ref": "#/$defs/id"
+            "$ref": "#/$defs/review_target_id"
           },
           "text": {
             "$ref": "#/$defs/text"
@@ -288,7 +294,7 @@
         ],
         "properties": {
           "id": {
-            "$ref": "#/$defs/id"
+            "$ref": "#/$defs/review_target_id"
           },
           "text": {
             "$ref": "#/$defs/text"

@@ -104,6 +104,12 @@ not prove semantic quality. Assemble the compact review-packet from saved
 evidence: behavior/invariants, diff, results, limitations, rollback and open
 decisions. Inspect its generated evidence_summary.
 
+Inspect the QA `mutation_assessment` and its actual sensitivity evidence under
+[test sensitivity](../controlflow/references/evidence.md#test-sensitivity).
+For bugfixes, require the regression to fail on the old defect and pass on the
+fixed source. Report survivors, unsupported methods and skipped work honestly;
+a score or green suite cannot establish semantic quality.
+
 Satisfy all required code/agent/human judges. A contract's human_final requirement
 applies even when the profile omits it. A different native model is optional and does not
 prove independence. Findings cite rule, source, consequence and evidence.

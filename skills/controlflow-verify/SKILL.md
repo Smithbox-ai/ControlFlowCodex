@@ -68,6 +68,13 @@ are not evidence.
 Apply auth, concurrency, data-integrity, and operability scrutiny only when the
 task touches them — not as a fixed checklist for every plan.
 
+For new code-judged QA, validate the `mutation_assessment` decision, its risk
+rationale, bounded method and scenario/check bindings against
+[test sensitivity](../controlflow/references/evidence.md#test-sensitivity).
+Require a planned bugfix regression that fails on the old defect and passes on
+the fix after preflight. Green tests alone do not establish sensitivity; reject
+an unsupported run or a skip justified only by a green suite.
+
 ## Verdict
 
 Write a compact review rationale inside the active run directory:

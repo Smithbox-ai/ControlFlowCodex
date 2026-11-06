@@ -3,8 +3,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $script:PathComparison = if ($IsWindows) { [StringComparison]::OrdinalIgnoreCase } else { [StringComparison]::Ordinal }
 
-function Resolve-ControlFlowPath([string]$Path) {
-    if ([string]::IsNullOrWhiteSpace($Path)) { throw 'Path must not be empty' }
+function Assert-ControlFlowWindowsPath([string]$Path) {
     if ($IsWindows) {
         # GetFullPath is lexical: namespace and 8.3 spellings can refer to the
         # same tree while defeating string containment/source-overlap checks.
@@ -20,13 +19,28 @@ function Resolve-ControlFlowPath([string]$Path) {
             if ($component -match '^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(?:\.|$)') { throw 'Windows device alias paths are unsupported' }
         }
     }
-    $full = [IO.Path]::GetFullPath($Path)
+}
+
+function Resolve-ControlFlowPath([string]$Path) {
+    if ([string]::IsNullOrWhiteSpace($Path)) { throw 'Path must not be empty' }
+    Assert-ControlFlowWindowsPath $Path
+    if ([IO.Path]::IsPathFullyQualified($Path)) { $resolved = $Path }
+    else {
+        $provider = $null; $drive = $null
+        try { $resolved = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path, [ref]$provider, [ref]$drive) }
+        catch { throw 'Path must use the FileSystem provider' }
+        if ($provider.Name -ne 'FileSystem') { throw 'Path must use the FileSystem provider' }
+    }
+    # Recheck filesystem spelling so provider-qualified paths cannot hide aliases.
+    Assert-ControlFlowWindowsPath $resolved
+    $full = [IO.Path]::GetFullPath($resolved)
     $current = $full
     while ($current) {
-        if (Test-Path -LiteralPath $current) {
-            $item = Get-Item -LiteralPath $current -Force
-            if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Link/reparse path is not allowed: $current" }
-        }
+        # Native inspection preserves Unix filename bytes and works from any provider.
+        try { $attributes = [IO.File]::GetAttributes($current) }
+        catch [IO.FileNotFoundException] { $attributes = $null }
+        catch [IO.DirectoryNotFoundException] { $attributes = $null }
+        if ($null -ne $attributes -and ($attributes -band [IO.FileAttributes]::ReparsePoint)) { throw "Link/reparse path is not allowed: $current" }
         $parent = [IO.Path]::GetDirectoryName($current)
         if ($parent -eq $current) { break }
         $current = $parent

@@ -9,7 +9,7 @@ $check=$v.checks[0]|ConvertTo-Json -Depth 30|ConvertFrom-Json -AsHashtable;$chec
 $ctx=Artifact $r $rp context;$design=Artifact $r $rp design @($ctx);ReviewArtifact $r $rp $design|Out-Null
 $qa=Artifact $r $rp qa-plan @($design) @{scenarios=@(
  @{id='S1';inputs='one';expected='first';expectation_source='user';criterion_refs=@('C1');check_refs=@('check-1');negative='invalid';boundary='empty'},
- @{id='S2';inputs='two';expected='second';expectation_source='user';criterion_refs=@('C2');check_refs=@('check-2');negative='invalid';boundary='empty'})}
+ @{id='S2';inputs='two';expected='second';expectation_source='user';criterion_refs=@('C2');check_refs=@('check-2');negative='invalid';boundary='empty'});mutation_assessment=@{decision='skip';method='none';rationale='This fixture tests immutable QA bindings during contract promotion; mutation sensitivity is outside its scope';scope=@();criterion_refs=@();check_refs=@()}}
 $impl=Artifact $r $rp implementation-plan @($qa)
 $v.contract_status='final';$v.checks[0].criteria=@('C2');$v.checks[1].criteria=@('C1');[IO.File]::WriteAllText($p,($v|ConvertTo-Json -Depth 40))
 Throws {Update-ControlFlowRun $r $rp @{type='preflight';status='APPROVED'}} 'FinalPromotionRejectsReassignedQAChecks'

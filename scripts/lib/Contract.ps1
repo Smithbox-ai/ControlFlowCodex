@@ -55,7 +55,7 @@ function Assert-CFMigrationInput {
 }
 function Read-ControlFlowContract {
     param([Parameter(Mandatory)][string]$Path,[switch]$AllowV2)
-    $bytes=[IO.File]::ReadAllBytes([IO.Path]::GetFullPath($Path));$text=$script:Utf8.GetString($bytes).TrimStart([char]0xfeff)
+    $bytes=[IO.File]::ReadAllBytes((Get-CFFullPath $Path));$text=$script:Utf8.GetString($bytes).TrimStart([char]0xfeff)
     $contract=ConvertFrom-Json -InputObject $text -AsHashtable -Depth 80
     if($AllowV2 -and $contract.schema_version -eq '2.0.0'){
         Assert-CFMigrationInput $contract
@@ -115,6 +115,7 @@ function Assert-CFV4Contract($Contract) {
     if(($Contract.domain.classification -in @('core','unknown') -or $high) -and (-not $Contract.review_policy.human_design -or -not $Contract.review_policy.human_final)){throw 'DOMAIN_DOES_NOT_LOWER_RISK'}
     if($Contract.work_type -ceq 'feature' -and -not $Contract.review_policy.human_design){throw 'HUMAN_DESIGN_REQUIRED'}
     $targets=@($Contract.criteria|ForEach-Object {$_.id});if($Contract.ContainsKey('phases')){$targets+=@($Contract.phases|ForEach-Object {$_.id})};$seen=Get-CFMap
+    if('design' -cin $targets){throw 'RESERVED_REVIEW_TARGET_ID:design'}
     foreach($req in $Contract.review_policy.requirements){
         if($seen.ContainsKey($req.target_id)){throw 'DUPLICATE_REVIEW_TARGET'};$seen[$req.target_id]=$true
         if($Contract.contract_status -ceq 'final' -and $req.target_id -cnotin $targets){throw 'INVALID_REVIEW_TARGET'}
@@ -130,6 +131,69 @@ function Assert-CFV4Contract($Contract) {
         if($profiles.ContainsKey($profile.id)){throw 'DUPLICATE_QUALITY_PROFILE'};$profiles[$profile.id]=$true
         foreach($id in $profile.check_ids){if($id -cnotin @($Contract.checks|ForEach-Object {$_.id})){throw 'INVALID_PROFILE_CHECK'}}
         if($profile.required -and $profile.check_ids.Count -eq 0 -and $profile.capability -ceq 'available'){throw 'REQUIRED_PROFILE_CHECK_MISSING'}
+        if($Contract.contract_status -ceq 'final' -and $profile.kind -ceq 'mutation' -and $profile.required -and $profile.capability -ceq 'available'){
+            foreach($check in $Contract.checks|Where-Object {$_.id -cin $profile.check_ids}){
+                if($check.ContainsKey('report') -and $check.report.format -ceq 'stryker-json' -and (-not $check.report.ContainsKey('minimum_score') -or $check.report.minimum_score -le 0)){throw 'REQUIRED_MUTATION_MINIMUM_SCORE_REQUIRED'}
+            }
+        }
+    }
+}
+function Assert-CFV4MutationAssessment($Contract,$Payload) {
+    # This is a guard for newly saved QA plans. Historical artifacts remain
+    # schema-readable without an assessment and are never retroactively edited.
+    if($Contract.schema_version -cne '4.0.0' -or $Contract.workflow.profile -ceq 'light'){return}
+    $hasCode=@($Contract.review_policy.requirements|Where-Object {'code' -cin $_.judges}).Count -gt 0
+    $mutationProfiles=@($Contract.quality_profiles|Where-Object {$_.kind -ceq 'mutation'})
+    if($Payload -isnot [Collections.IDictionary] -or -not $Payload.ContainsKey('mutation_assessment')){
+        if(-not $hasCode -and $mutationProfiles.Count -eq 0){return}
+        throw 'MUTATION_ASSESSMENT_REQUIRED'
+    }
+    $assessment=$Payload.mutation_assessment
+    if($assessment -isnot [Collections.IDictionary]){throw 'MUTATION_ASSESSMENT_INVALID'}
+    $required=@('decision','method','rationale','scope','criterion_refs','check_refs')
+    foreach($name in $required){if(-not $assessment.ContainsKey($name)){throw ('MUTATION_ASSESSMENT_FIELD_REQUIRED:'+$name)}}
+    foreach($name in $assessment.Keys){if($name -cnotin ($required+@('budget','acceptance'))){throw ('MUTATION_ASSESSMENT_UNKNOWN_FIELD:'+$name)}}
+    foreach($name in @('decision','method','rationale','budget','acceptance')){
+        if($assessment.ContainsKey($name) -and ($assessment[$name] -isnot [string] -or [string]::IsNullOrWhiteSpace($assessment[$name]))){throw ('MUTATION_ASSESSMENT_TEXT_REQUIRED:'+$name)}
+    }
+    if($assessment.decision -cnotin @('run','skip','unsupported')){throw 'MUTATION_ASSESSMENT_INVALID_DECISION'}
+    foreach($name in @('scope','criterion_refs','check_refs')){
+        if($assessment[$name] -isnot [Collections.IList]){throw ('MUTATION_ASSESSMENT_ARRAY_REQUIRED:'+$name)}
+        $seen=Get-CFMap
+        foreach($value in $assessment[$name]){
+            if($value -isnot [string] -or [string]::IsNullOrWhiteSpace($value) -or $seen.ContainsKey($value)){throw ('MUTATION_ASSESSMENT_INVALID_ARRAY:'+$name)}
+            $seen[$value]=$true
+        }
+    }
+    foreach($path in $assessment.scope){
+        if([IO.Path]::IsPathRooted($path) -or $path.Contains('\') -or $path -match '[:*?\[\]\x00-\x1f]' -or @($path.Split('/')|Where-Object {$_ -cin @('','.','..')}).Count -gt 0){throw ('MUTATION_ASSESSMENT_INVALID_SCOPE:'+$path)}
+    }
+    foreach($id in $assessment.criterion_refs){if($id -cnotin @($Contract.criteria|ForEach-Object {$_.id})){throw ('MUTATION_ASSESSMENT_INVALID_CRITERION:'+$id)}}
+    foreach($id in $assessment.check_refs){if($id -cnotin @($Contract.checks|ForEach-Object {$_.id})){throw ('MUTATION_ASSESSMENT_INVALID_CHECK:'+$id)}}
+    if($assessment.decision -cne 'run'){
+        if($assessment.method -cne 'none' -or $assessment.check_refs.Count -ne 0){throw 'MUTATION_ASSESSMENT_NONRUN_METHOD_OR_CHECKS'}
+        return
+    }
+    if($assessment.method -cnotin @('stryker','controlled')){throw 'MUTATION_ASSESSMENT_RUN_METHOD_REQUIRED'}
+    foreach($name in @('scope','criterion_refs','check_refs')){if($assessment[$name].Count -eq 0){throw ('MUTATION_ASSESSMENT_RUN_ARRAY_REQUIRED:'+$name)}}
+    foreach($name in @('budget','acceptance')){if(-not $assessment.ContainsKey($name)){throw ('MUTATION_ASSESSMENT_FIELD_REQUIRED:'+$name)}}
+    $coveredCriteria=Get-CFMap;$reportedScope=Get-CFMap
+    foreach($id in $assessment.check_refs){
+        $check=@($Contract.checks|Where-Object {$_.id -ceq $id})[0]
+        $assessed=@($check.criteria|Where-Object {$_ -cin $assessment.criterion_refs})
+        if($assessed.Count -eq 0){throw ('MUTATION_ASSESSMENT_CHECK_CRITERIA_REQUIRED:'+$id)}
+        foreach($criterion in $assessed){$coveredCriteria[$criterion]=$true}
+        $scenarios=if($Payload.ContainsKey('scenarios')){@($Payload.scenarios)}else{@()}
+        if(@($scenarios|Where-Object {$id -cin $_.check_refs -and @($_.criterion_refs|Where-Object {$_ -cin $assessed}).Count -gt 0}).Count -eq 0){throw ('MUTATION_ASSESSMENT_QA_SCENARIO_REQUIRED:'+$id)}
+        if($assessment.method -ceq 'stryker'){
+            if(-not $check.ContainsKey('report') -or $check.report.format -cne 'stryker-json' -or @($mutationProfiles|Where-Object {$id -cin $_.check_ids}).Count -eq 0){throw ('MUTATION_ASSESSMENT_STRYKER_PROFILE_REQUIRED:'+$id)}
+            foreach($path in $check.report.scope){$reportedScope[$path]=$true}
+        }
+    }
+    foreach($id in $assessment.criterion_refs){if(-not $coveredCriteria.ContainsKey($id)){throw ('MUTATION_ASSESSMENT_CRITERION_CHECK_REQUIRED:'+$id)}}
+    if($assessment.method -ceq 'stryker'){
+        if($assessment.scope.Count -ne $reportedScope.Count){throw 'MUTATION_ASSESSMENT_STRYKER_SCOPE_MISMATCH'}
+        foreach($path in $assessment.scope){if(-not $reportedScope.ContainsKey($path)){throw 'MUTATION_ASSESSMENT_STRYKER_SCOPE_MISMATCH'}}
     }
 }
 function Get-CFIntentDigest($Contract) {

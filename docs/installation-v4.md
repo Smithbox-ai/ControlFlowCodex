@@ -4,7 +4,8 @@ Package candidate `4.0.0-rc.3` starts new tasks with contract/runtime `4.0.0`.
 It is an installable candidate, not a stable or comparative-quality claim.
 Git and PowerShell 7.4 or newer are required; 7.6.9 is tested and recommended.
 Start from the verified artifact and retain
-its ZIP, SHA-256 and `.inventory.json` sidecars.
+its exact ZIP, `.zip.sha256` checksum and `.zip.inventory.json` inventory sidecars
+together for upgrades, recovery and rollback.
 
 ## Select the host flavor
 
@@ -65,7 +66,8 @@ trust, callback delivery or write permission. Invoke a task with
 ## Upgrade and rollback
 
 Before replacing an existing installation, retain its exact verified archive,
-inventory, flavor, registration and necessary state. Existing owned targets
+both `.zip.sha256` and `.zip.inventory.json` sidecars, flavor, registration and
+necessary state. Existing owned targets
 require `-Force`. For an ordinary upgrade, `scripts/install.ps1 -Force` preserves
 the installed flavor; a real change also requires explicit `-Flavor`. The
 installer replaces the active tree cleanly and retains its entire previous

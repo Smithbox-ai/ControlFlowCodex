@@ -105,13 +105,30 @@ Explicit planning re-entry records and resets correction history; it grants no
 new approval. Completion is
 terminal; a stale completed result can become BLOCKED without reopening edits.
 
+Completion rechecks source, raw contract and required check-input digests before
+returning PASS and again before publishing COMPLETED. The gate retains its
+`input_digests` observation, including QA-referenced checks. A detected concurrent
+change or newly pending interrupt rejects completion. These checks do not lock
+external editors or guarantee unchanged files after the operation returns.
+
 ## Quality capabilities
+
+V4 criterion and phase IDs must not equal the reserved design-review target
+`design`; use a distinct ID such as `C-design` or `phase-design`. Validation
+rejects this collision before a new run starts. V3 reading semantics are unchanged.
 
 Check `report` declares format/path/tool/version/scope/config/baseline/exclusions,
 optional minimum_tests (default 1) and minimum_score (mutation only, no universal
 threshold). Paths are literal repository-relative files, preferably ignored
 output directories. Reports must be rewritten by each capture; old reports cannot
 substitute for a run. Captures store raw bytes/hash and actual process outcome.
+Every check in a required, available mutation profile of a final contract needs
+an explicit `minimum_score > 0`, chosen for the project and scope. An optional
+mutation report without a threshold remains a measurement; it cannot support a
+claim that sensitivity acceptance passed.
+This final-contract invariant also applies when reading an older V4 contract:
+add the missing positive threshold before resuming and collect fresh bound
+evidence. It does not rewrite historical artifacts or change V3 semantics.
 
 Supported count parsing is deliberately narrow: one JUnit testsuite with direct
 testcase children and matching summary counts; NUnit 3 test-run with matching
@@ -124,6 +141,25 @@ be silently counted as completed tests.
 NUnit counts are report claims, not semantic proof. Pending mutation results are
 NOT_RUN. Invalid/ignored/no-coverage/survived/timeouts remain visible; Stryker's
 timeout-as-detected metric differs from an incomplete wrapper run.
+
+Stryker report file keys must be canonical relative paths. They resolve through
+the report's `projectRoot` when present, otherwise through the check's
+`working_directory`. A relative
+projectRoot resolves from that working directory; an absolute root must remain
+inside the repository. Resolved files must match the literal repository-relative
+files in declared `report.scope`: every reported file is in scope, and every
+scoped file is represented. No globs, traversal, backslashes or linked source
+paths are accepted. Source is read with UTF-8 as the default and standard BOM
+detection. Report source must equal the current decoded text exactly, except the
+encoding BOM; line endings and all other text must match. A fresh report timestamp
+does not replace this source/scope binding. Report metadata retains
+`scope_verified` and `verified_scope`; `acceptance_status` distinguishes
+UNCONFIGURED, PASS, FAIL and NOT_EVALUATED.
+
+Every Stryker scoped source file is automatically included in check-input
+hashing, even when ignored by Git. It is hashed before/after execution and again
+when checking freshness or preparing profile summaries. Missing old input
+receipts require recapture. Explicit `inputs` still cover other dependencies.
 
 Required unsupported profiles block. Optional lint/tests/mutation/complexity/CRAP/
 SAST/DAST/environment profiles record their limitations and require existing tools;
@@ -143,9 +179,103 @@ tests quality profile); do not manufacture test reports for build/diff commands.
 Review packets add
 runtime-generated evidence_summary from saved captures; prose cannot replace it.
 
+Quality profile summaries include reasons and per-check observations, keeping
+`ERROR`, `FAIL`, `TIMEOUT`, `STALE`, `NOT_RUN` and `PASS` distinct. A malformed or
+unverifiable report is ERROR; failed checks or thresholds are FAIL; a command
+deadline is TIMEOUT; changed source/definitions/inputs make evidence STALE;
+absent or incomplete execution is NOT_RUN. PASS requires the applicable current
+checks and report rules. Capability outcomes `UNSUPPORTED` and `NOT_APPLICABLE`
+remain distinct from those execution outcomes. Neither PASS nor a count or score
+proves semantic quality.
+
 Own PowerShell controlled mutants are a separate isolated sensitivity pilot, not
 Stryker support for PowerShell or proof of full correctness. CRAP remains a risk
 indicator without an arbitrary threshold.
+
+### QA sensitivity assessment
+
+Every newly saved code-judged `qa-plan` includes `payload.mutation_assessment`.
+Full human-only and light docs plans are exempt from this guard. Historic saved
+QA and V3 data remain readable; do not rewrite historical artifacts to add fields.
+Choose run/skip/unsupported using the
+[test sensitivity recipe](../skills/controlflow/references/evidence.md#test-sensitivity).
+For bugfixes, plan a regression that fails on the old defect and passes on the
+fix. A green suite alone supplies no negative control. Relevant comparisons,
+recurring bugs and critical access/financial/integrity invariants warrant a
+bounded sensitivity run when a suitable existing mechanism is available.
+
+This example connects the QA payload to contract checks and a required mutation
+profile. It assumes an existing repository script `tests/run-billing-mutation.ps1`
+that invokes its pinned Stryker tool and rewrites `.reports/billing-mutation.json`.
+Use actual paths, tool version, config, baseline and acceptance for the project;
+90 is an illustrative project decision, not a plugin default. Merge `payload`
+into the normal QA envelope and the declarations into the final contract, with
+the corresponding code-judged criterion `C-billing`.
+
+```json
+{
+  "payload": {
+    "scenarios": [{
+      "id": "billing-boundary",
+      "inputs": "Amounts immediately below, equal to and above the limit",
+      "expected": "Only amounts below the limit are accepted",
+      "expectation_source": "Accepted billing rule and incident reproducer",
+      "criterion_refs": ["C-billing"],
+      "check_refs": ["billing-tests", "billing-mutation"],
+      "negative": "The regression fails with the old inclusive comparison",
+      "boundary": "An amount equal to the limit is rejected"
+    }],
+    "mutation_assessment": {
+      "decision": "run",
+      "method": "stryker",
+      "rationale": "A recurrent financial defect changes a comparison",
+      "scope": ["src/Billing/Guard.cs"],
+      "criterion_refs": ["C-billing"],
+      "check_refs": ["billing-mutation"],
+      "budget": "One source file; at most 120 seconds",
+      "acceptance": "Score at least 90; comparison mutant detected; review survivors"
+    }
+  },
+  "checks": [{
+    "id": "billing-tests",
+    "command": "pwsh -NoProfile -File tests/billing-regression.tests.ps1",
+    "working_directory": ".",
+    "timeout_seconds": 120,
+    "criteria": ["C-billing"]
+  }, {
+    "id": "billing-mutation",
+    "command": "pwsh -NoProfile -File tests/run-billing-mutation.ps1",
+    "working_directory": ".",
+    "timeout_seconds": 120,
+    "criteria": ["C-billing"],
+    "report": {
+      "format": "stryker-json",
+      "path": ".reports/billing-mutation.json",
+      "tool": "dotnet-stryker",
+      "version": "repository-pinned-version",
+      "scope": ["src/Billing/Guard.cs"],
+      "config": "stryker-config.json",
+      "baseline": "incident-reproducer",
+      "exclusions": [],
+      "minimum_score": 90
+    }
+  }],
+  "quality_profiles": [{
+    "id": "billing-sensitivity",
+    "kind": "mutation",
+    "required": true,
+    "capability": "available",
+    "check_ids": ["billing-mutation"]
+  }]
+}
+```
+
+The ordinary `billing-tests` command here asserts the intended failure on an
+isolated old-defect copy and success on fixed code; it is a command check, not
+test-count assurance. Declare a recognized test report separately if acceptance
+depends on discovered/executed counts. The runtime binds declared checks; a
+reviewer must still examine whether this script and the mutant dispositions
+establish the stated external behavior.
 
 ## Verification and release limits
 

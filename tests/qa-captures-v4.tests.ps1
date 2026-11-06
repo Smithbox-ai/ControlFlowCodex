@@ -26,7 +26,7 @@ $v.checks+=@(
 File $r '.cache/build-input' 'initial input'
 $run=Start-ControlFlowRun $r $p -ManualFallback;$rp=$run.run_path
 $ctx=Artifact $r $rp context;$design=Artifact $r $rp design @($ctx);ReviewArtifact $r $rp $design|Out-Null
-$qa=Artifact $r $rp qa-plan @($design) @{scenarios=@(@{id='S1';inputs='fixture';expected='External requested behavior';expectation_source='user:implement';criterion_refs=@('C1');check_refs=@('build','diff','check-1');negative='Invalid input fails';boundary='Empty input'})}
+$qa=Artifact $r $rp qa-plan @($design) @{scenarios=@(@{id='S1';inputs='fixture';expected='External requested behavior';expectation_source='user:implement';criterion_refs=@('C1');check_refs=@('build','diff','check-1');negative='Invalid input fails';boundary='Empty input'});mutation_assessment=@{decision='skip';method='none';rationale='This fixture tests mixed process/report capture freshness; source mutation sensitivity is outside its scope';scope=@();criterion_refs=@();check_refs=@()}}
 $impl=Artifact $r $rp implementation-plan @($qa)
 $payload=@{baseline_ref=$qa;dispositions=@(@{scenario_id='S1';status='PASS';expected='External requested behavior';evidence_refs=@('build','diff','check-1');drift='none'})}
 $v.contract_status='final';[IO.File]::WriteAllText($p,($v|ConvertTo-Json -Depth 40))

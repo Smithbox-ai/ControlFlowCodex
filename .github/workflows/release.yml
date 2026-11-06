@@ -23,21 +23,24 @@ jobs:
       matrix:
         os: [windows-latest, ubuntu-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Show PowerShell version
         shell: pwsh
         run: $PSVersionTable
       - name: Install Pester
         shell: pwsh
         run: |
-          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-          Install-Module -Name Pester -MinimumVersion 5.0 -Scope CurrentUser -Force -AllowClobber
+          $package = Join-Path $env:RUNNER_TEMP 'Pester.5.9.1.nupkg'
+          Invoke-WebRequest 'https://www.powershellgallery.com/api/v2/package/Pester/5.9.1' -OutFile $package
+          if ((Get-FileHash $package -Algorithm SHA256).Hash.ToLowerInvariant() -cne '8dd4060fc3bc895f05bd655e4ab82abe346de54a4e6415dfb727cc8378672b69') { throw 'Pester package hash mismatch' }
+          [IO.Compression.ZipFile]::ExtractToDirectory($package,(Join-Path $env:RUNNER_TEMP 'Pester5'))
       - name: Run contract suite
         # The default macOS /var temporary path is a symlink rejected by the installer.
         env:
           TMPDIR: ${{ runner.temp }}
         shell: pwsh
         run: |
+          Import-Module (Join-Path $env:RUNNER_TEMP 'Pester5/Pester.psd1') -Force
           ./tests/run-contract-tests.ps1 -UsePester
           if ($LASTEXITCODE -ne 0) { throw "Contract suite failed: $LASTEXITCODE" }
           ./tests/package.tests.ps1
@@ -48,7 +51,10 @@ jobs:
     needs: cross-os
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # ensure-release-tag.ps1 pushes the verified tag with git.
+          persist-credentials: true
       - name: Record checked out source commit
         id: source
         shell: pwsh
@@ -62,11 +68,14 @@ jobs:
       - name: Install Pester
         shell: pwsh
         run: |
-          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-          Install-Module -Name Pester -MinimumVersion 5.0 -Scope CurrentUser -Force -AllowClobber
+          $package = Join-Path $env:RUNNER_TEMP 'Pester.5.9.1.nupkg'
+          Invoke-WebRequest 'https://www.powershellgallery.com/api/v2/package/Pester/5.9.1' -OutFile $package
+          if ((Get-FileHash $package -Algorithm SHA256).Hash.ToLowerInvariant() -cne '8dd4060fc3bc895f05bd655e4ab82abe346de54a4e6415dfb727cc8378672b69') { throw 'Pester package hash mismatch' }
+          [IO.Compression.ZipFile]::ExtractToDirectory($package,(Join-Path $env:RUNNER_TEMP 'Pester5'))
       - name: Run contract suite
         shell: pwsh
         run: |
+          Import-Module (Join-Path $env:RUNNER_TEMP 'Pester5/Pester.psd1') -Force
           ./tests/run-contract-tests.ps1 -UsePester
           if ($LASTEXITCODE -ne 0) { throw "Contract suite failed: $LASTEXITCODE" }
       - name: Build package
@@ -137,15 +146,16 @@ jobs:
             if ([IO.Directory]::Exists($resolved)) { Remove-Item -LiteralPath $resolved -Recurse -Force }
           }
       - name: Upload package artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: controlflow-codex-${{ steps.package.outputs.version }}
           path: |
             dist/controlflow-codex-${{ steps.package.outputs.version }}.zip
             dist/controlflow-codex-${{ steps.package.outputs.version }}.zip.sha256
+            dist/controlflow-codex-${{ steps.package.outputs.version }}.zip.inventory.json
             dist/release-notes.md
           if-no-files-found: error
-      - name: Publish versioned archive, checksum, and notes
+      - name: Publish versioned archive, checksum, inventory, and notes
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -153,7 +163,7 @@ jobs:
         run: |
           $v = $env:RELEASE_VERSION
           $archive = "dist/controlflow-codex-$v.zip"
-          $arguments = @('release', 'create', "v$v", $archive, "$archive.sha256", '--verify-tag', '--title', "ControlFlow for Codex $v", '--notes-file', 'dist/release-notes.md')
+          $arguments = @('release', 'create', "v$v", $archive, "$archive.sha256", "$archive.inventory.json", '--verify-tag', '--title', "ControlFlow for Codex $v", '--notes-file', 'dist/release-notes.md')
           if ($v.Contains('-')) { $arguments += '--prerelease' }
           & gh @arguments
           if ($LASTEXITCODE -ne 0) { throw "GitHub Release publication failed: $LASTEXITCODE. A partial draft may exist; follow docs/release.md before retrying." }

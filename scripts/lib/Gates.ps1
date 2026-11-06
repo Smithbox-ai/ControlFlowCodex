@@ -24,7 +24,93 @@ function Get-CFV4ProfileCapability($Contract,$Profile) {
     }
     return 'available'
 }
-function Get-CFV4GateReasons($Read,$ContractRead,$Source,$Fresh) {
+function Test-CFV4MutationScope($Check,$Capture) {
+    if(-not $Check.ContainsKey('report') -or $Check.report.format -cne 'stryker-json'){return $true}
+    if(-not $Capture.ContainsKey('quality') -or $null -eq $Capture.quality){return $false}
+    $quality=$Capture.quality
+    if(-not $quality.ContainsKey('scope_verified') -or $quality.scope_verified -isnot [bool] -or -not $quality.scope_verified -or -not $quality.ContainsKey('verified_scope') -or -not $Check.report.ContainsKey('scope')){return $false}
+    if(@($Check.report.scope).Count -eq 0 -or @($quality.verified_scope).Count -ne @($Check.report.scope).Count){return $false}
+    return (Get-CFJsonHash @(Get-CFSorted $quality.verified_scope)) -ceq (Get-CFJsonHash @(Get-CFSorted $Check.report.scope))
+}
+function Get-CFV4ProfileSummary($Read,$ContractRead,$Source,$Profile) {
+    $capability=Get-CFV4ProfileCapability $ContractRead.contract $Profile
+    $observations=@(foreach($id in $Profile.check_ids){
+        $reasons=[Collections.Generic.List[string]]::new()
+        $defs=@($ContractRead.contract.checks|Where-Object {$_.id -ceq $id})
+        $captures=@($Read.evidence.checks|Where-Object {$_.check_id -ceq $id})
+        $capture=if($captures.Count -gt 0){$captures[-1]}else{$null}
+        $observation=[ordered]@{check_id=$id;status='NOT_RUN';capture_id=$null;capture_status='NOT_RUN';exit_code=$null;timed_out=$false;process_incomplete=$false;quality_status='NOT_RUN';reasons=@();quality=$null}
+        if($null -eq $capture){$reasons.Add('CAPTURE_MISSING')}
+        elseif($defs.Count -ne 1){$reasons.Add('CHECK_DEFINITION_MISSING')}
+        else {
+            $def=$defs[0];$observation.capture_id=$capture.capture_id;$observation.capture_status=$capture.status
+            $observation.exit_code=$capture.exit_code;$observation.timed_out=$capture.timed_out
+            if($capture.ContainsKey('process_incomplete')){$observation.process_incomplete=$capture.process_incomplete}
+            $quality=if($capture.ContainsKey('quality')){$capture.quality}else{$null}
+            if($null -ne $quality){
+                $observation.quality_status=$quality.status
+                # Keep the parsed observations, never arbitrary stdout, stderr, or report bodies.
+                $observation.quality=[ordered]@{}
+                foreach($key in @('status','format','executed_tests','assertion_count','mutation_score','minimum_score','acceptance_status','scope_verified','verified_scope','counts','limitations','error','tool','version','scope','config','baseline','exclusions','raw_report_ref')){
+                    if($quality.ContainsKey($key)){$observation.quality[$key]=$quality[$key]}
+                }
+            }
+            if($capture.status -ceq 'STALE'){$reasons.Add('CAPTURE_MARKED_STALE')}
+            if($capture.contract_digest -cne $ContractRead.digest){$reasons.Add('CAPTURE_CONTRACT_MISMATCH')}
+            if($capture.command_digest -cne (Get-CFJsonHash $def)){$reasons.Add('CAPTURE_COMMAND_MISMATCH')}
+            if($capture.source_before -cne $Source.digest -or $capture.source_after -cne $Source.digest){$reasons.Add('CAPTURE_SOURCE_MISMATCH')}
+            if(Test-CFCheckHasInputs $def){
+                try{
+                    $inputs=Get-CFCheckInputDigest $Read.state.binding.worktree_realpath $def
+                    if(-not $capture.ContainsKey('input_before') -or -not $capture.ContainsKey('input_after') -or $capture.input_before -cne $inputs -or $capture.input_after -cne $inputs){$reasons.Add('CAPTURE_INPUT_MISMATCH')}
+                }catch{$reasons.Add('CAPTURE_INPUT_UNVERIFIABLE')}
+            }
+            $stale=$reasons.Count -gt 0
+            $timeout=$capture.timed_out -or $capture.status -ceq 'TIMEOUT'
+            $processFailed=$capture.exit_code -ne 0 -or ($capture.ContainsKey('process_incomplete') -and $capture.process_incomplete)
+            $wrapperFailed=$capture.status -ceq 'FAIL' -or $processFailed
+            $hasReport=$def.ContainsKey('report')
+            $reportMissing=$hasReport -and ($null -eq $quality -or -not $quality.ContainsKey('raw_report_ref'))
+            $scopeUnverified=-not (Test-CFV4MutationScope $def $capture)
+            if($timeout){$reasons.Add('CAPTURE_TIMED_OUT')}
+            if($wrapperFailed){$reasons.Add('CAPTURE_FAILED')}
+            if($reportMissing){$reasons.Add('QUALITY_REPORT_MISSING')}
+            if($scopeUnverified){$reasons.Add('QUALITY_SCOPE_UNVERIFIED')}
+            if($hasReport -and $null -ne $quality){
+                switch -CaseSensitive($quality.status){
+                    'FAIL'{$reasons.Add('QUALITY_REPORT_FAILED')}
+                    'ERROR'{$reasons.Add('QUALITY_REPORT_ERROR')}
+                    'NOT_RUN'{$reasons.Add('QUALITY_REPORT_NOT_RUN')}
+                    'UNSUPPORTED'{$reasons.Add('QUALITY_REPORT_UNSUPPORTED')}
+                }
+            }
+            # Freshness describes whether any captured outcome applies to this source.
+            # An absent/pending report alone remains NOT_RUN; process failures remain FAIL.
+            $observation.status=if($stale){'STALE'}
+                elseif($capture.status -ceq 'ERROR' -or ($hasReport -and $null -ne $quality -and $quality.status -ceq 'ERROR')){'ERROR'}
+                elseif($timeout){'TIMEOUT'}
+                elseif($processFailed){'FAIL'}
+                elseif($reportMissing -or $scopeUnverified -or ($hasReport -and $quality.status -cin @('NOT_RUN','UNSUPPORTED'))){'NOT_RUN'}
+                elseif($wrapperFailed -or ($hasReport -and $quality.status -ceq 'FAIL')){'FAIL'}
+                elseif($capture.status -ceq 'PASS' -and (-not $hasReport -or $quality.status -ceq 'PASS')){'PASS'}
+                else{'NOT_RUN'}
+            if($observation.status -ceq 'NOT_RUN' -and $reasons.Count -eq 0){$reasons.Add('CAPTURE_NOT_RUN')}
+        }
+        $observation.reasons=@($reasons)
+        $observation
+    })
+    $status=switch -CaseSensitive($capability){
+        'unsupported'{'UNSUPPORTED'}
+        'not_applicable'{'NOT_APPLICABLE'}
+        'unknown'{'NOT_RUN'}
+        default {
+            if($observations.Count -eq 0){'NOT_RUN'}
+            else{foreach($candidate in @('ERROR','FAIL','TIMEOUT','STALE','NOT_RUN','PASS')){if($candidate -cin @($observations.status)){$candidate;break}}}
+        }
+    }
+    return [ordered]@{id=$Profile.id;kind=$Profile.kind;required=$Profile.required;status=$status;capability=$Profile.capability;check_ids=$Profile.check_ids;observations=$observations;reasons=@(foreach($observation in $observations){foreach($reason in $observation.reasons){$observation.check_id+':'+$reason}})}
+}
+function Get-CFV4GateReasons($Read,$ContractRead,$Source,$Fresh,$InputDigests=$null) {
     $c=$ContractRead.contract;$artifacts=Get-CFV4Artifacts $Read $c
     if($c.contract_status -cne 'final'){'DRAFT_CANNOT_COMPLETE';return}
     try{Assert-CFV4Execution $Read $ContractRead}catch{'V4_PREFLIGHT_MISSING_OR_STALE'}
@@ -33,7 +119,7 @@ function Get-CFV4GateReasons($Read,$ContractRead,$Source,$Fresh) {
         if($kind -in @('qa-recheck','review-packet') -and ($artifacts[$kind].artifact.source_digest -cne $Source.digest -or $artifacts[$kind].contract_digest -cne $ContractRead.digest)){('ARTIFACT_SOURCE_STALE:'+$kind)}
     }
     if($artifacts.ContainsKey('review-packet') -and $artifacts['review-packet'].artifact.payload.open_decisions.Count -gt 0){'OPEN_PACKET_DECISIONS'}
-    if($artifacts.ContainsKey('qa-plan')){foreach($scenario in $artifacts['qa-plan'].artifact.payload.scenarios){foreach($id in $scenario.check_refs){if(-not (Test-CFV4Capture $Read $ContractRead $Source $id)){('QA_CAPTURE_MISSING_OR_STALE:'+$id)}}}}
+    if($artifacts.ContainsKey('qa-plan')){foreach($scenario in $artifacts['qa-plan'].artifact.payload.scenarios){foreach($id in $scenario.check_refs){if(-not (Test-CFV4Capture $Read $ContractRead $Source $id -InputDigests $InputDigests)){('QA_CAPTURE_MISSING_OR_STALE:'+$id)}}}}
     if($c.review_policy.human_design -and (-not $artifacts.ContainsKey('design') -or -not (Test-CFV4Review $Read $ContractRead $artifacts.design.ref human design))){'HUMAN_DESIGN_REQUIRED'}
     foreach($req in $c.review_policy.requirements){foreach($judge in $req.judges){
         if($judge -ceq 'code'){
@@ -69,11 +155,12 @@ function New-CFCandidate([string]$RepoRoot,[string]$RunPath,[string[]]$OwnedPath
 }
 function Test-ControlFlowGate {
     param([Parameter(Mandatory)][string]$RepoRoot,[Parameter(Mandatory)][string]$RunPath,[Parameter(Mandatory)][ValidateSet('Commit','Completion')][string]$Kind,[string]$CommitSha)
-    $result=@{schema_version='4.0.0';kind=$Kind;status='ERROR';reasons=@();run_id=$null;source_digest=$null;contract_hash=$null;legacy_semantics=$false}
+    $result=@{schema_version='4.0.0';kind=$Kind;status='ERROR';reasons=@();run_id=$null;source_digest=$null;contract_hash=$null;input_digests=@{};legacy_semantics=$false}
     $lock=$null
     try {
         if($Kind -eq 'Commit'){$lock=Open-CFWriter $RunPath $RepoRoot}
         $read=Read-ControlFlowRun $RepoRoot $RunPath;$s=$read.state;$e=$read.evidence;$initial=$read.initial_snapshot
+        $RepoRoot=$s.binding.worktree_realpath
         $result.run_id=$s.run_id;$result.legacy_semantics=($s.schema_version -ceq '3.0.0')
         $c=Read-ControlFlowContract $s.contract_path;$contract=$c.contract;$result.contract_hash=$c.digest;$result.schema_version=$s.schema_version
         $source=Get-CFRunSource $RepoRoot $RunPath $s;$result.source_digest=$source.digest
@@ -89,7 +176,7 @@ function Test-ControlFlowGate {
                 if($approval.status -cne 'APPROVED' -or $approval.contract_digest -cne $c.digest -or ($type -eq 'review' -and $approval.source_digest -cne $source.digest)){$reasons.Add(($type.ToUpperInvariant()+'_STALE'))}
             }
         }
-        $fresh=Get-CFMap
+        $fresh=Get-CFMap;$inputDigests=Get-CFMap
         foreach($check in $contract.checks) {
             if($contract.schema_version -ceq '4.0.0' -and -not (Test-CFV4RequiredCheck $contract $check.id)){continue}
             $captures=@($e.checks|Where-Object {$_.check_id -ceq $check.id})
@@ -97,10 +184,12 @@ function Test-ControlFlowGate {
             $capture=$captures[-1]
             if($capture.status -cne 'PASS' -or $capture.exit_code -ne 0 -or $capture.timed_out){$reasons.Add('CHECK_FAILED:'+$check.id);continue}
             if($capture.contract_digest -cne $c.digest -or $capture.command_digest -cne (Get-CFJsonHash $check) -or $capture.source_before -cne $source.digest -or $capture.source_after -cne $source.digest){$reasons.Add('CHECK_STALE:'+$check.id);continue}
-            if($check.ContainsKey('inputs')){
+            if(Test-CFCheckHasInputs $check){
                 $inputDigest=Get-CFCheckInputDigest $RepoRoot $check
                 if(-not $capture.ContainsKey('input_before') -or -not $capture.ContainsKey('input_after') -or $capture.input_before -cne $inputDigest -or $capture.input_after -cne $inputDigest){$reasons.Add('CHECK_STALE:'+$check.id);continue}
+                $inputDigests[$check.id]=$inputDigest
             }
+            if($contract.schema_version -ceq '4.0.0' -and -not (Test-CFV4MutationScope $check $capture)){$reasons.Add('CHECK_MUTATION_SCOPE_UNVERIFIED:'+$check.id);continue}
             $fresh[$check.id]=$true
         }
         foreach($criterion in $contract.criteria) {
@@ -115,7 +204,7 @@ function Test-ControlFlowGate {
             }
             if(-not $valid){$reasons.Add('CRITERION_UNCOVERED:'+$criterion.id)}
         }
-        if($contract.schema_version -ceq '4.0.0'){foreach($reason in @(Get-CFV4GateReasons $read $c $source $fresh)){$reasons.Add($reason)}}
+        if($contract.schema_version -ceq '4.0.0'){foreach($reason in @(Get-CFV4GateReasons $read $c $source $fresh $inputDigests)){$reasons.Add($reason)}}
         $blockers=Get-CFMap;foreach($event in $e.events){if($event.type -ceq 'blocker'){$blockers[$event.id]=$event.status}}
         foreach($id in $blockers.Keys){if($blockers[$id] -eq 'OPEN'){$reasons.Add('OPEN_BLOCKER:'+$id)}}
         $current=Get-ControlFlowGitSnapshot $RepoRoot $RunPath $s.binding.session_id
@@ -171,6 +260,20 @@ function Test-ControlFlowGate {
                 $e.candidate=$candidate;$s.revision++;Publish-CFState $RunPath $s $e;$result.candidate=$candidate
             }
         }
+        if($Kind -eq 'Completion' -and $reasons.Count -eq 0){
+            $finalSource=Get-CFRunSource $RepoRoot $RunPath $s
+            $finalContract=Read-ControlFlowContract $s.contract_path
+            if($finalSource.digest -cne $source.digest){$reasons.Add('SOURCE_CHANGED_DURING_GATE')}
+            if($finalContract.digest -cne $c.digest){$reasons.Add('CONTRACT_CHANGED_DURING_GATE')}
+            foreach($id in $inputDigests.Keys){
+                $definition=@($contract.checks|Where-Object {$_.id -ceq $id})[0]
+                if((Get-CFCheckInputDigest $RepoRoot $definition) -cne $inputDigests[$id]){$reasons.Add('CHECK_INPUT_CHANGED_DURING_GATE:'+$id)}
+            }
+            $pending=Read-CFPendingInterrupt $RunPath $s
+            $ack=if($s.ContainsKey('acknowledged_interrupt_id')){$s.acknowledged_interrupt_id}else{$null}
+            if($null -ne $pending -and $pending.interrupt_id -cne $ack){$reasons.Add('INTERRUPT_PENDING')}
+        }
+        $result.input_digests=$inputDigests
         $result.reasons=@($reasons);$result.status=if($reasons.Count -eq 0){'PASS'}else{'FAIL'}
     }catch{$result.status='ERROR';$result.reasons=@('UNVERIFIABLE');$result.error=$_.Exception.Message}
     finally{if($lock){$lock.Dispose()}}

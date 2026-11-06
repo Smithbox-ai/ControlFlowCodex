@@ -1,5 +1,5 @@
 function Assert-CFNoLinks([string]$Path) {
-    $cursor=[IO.Path]::GetFullPath($Path)
+    $cursor=Get-CFFullPath $Path
     while($cursor){$item=[IO.FileInfo]::new($cursor);if($null -ne $item.LinkTarget -or (([IO.File]::Exists($cursor) -or [IO.Directory]::Exists($cursor)) -and ($item.Attributes -band [IO.FileAttributes]::ReparsePoint))){throw 'ARTIFACT_LINK_FORBIDDEN'};$next=[IO.Path]::GetDirectoryName($cursor);if($next -eq $cursor){break};$cursor=$next}
 }
 function Write-CFFlushed([string]$Path,[byte[]]$Bytes) {
@@ -26,7 +26,7 @@ function Publish-CFState([string]$RunPath,$State,$Evidence) {
     $tmp=[IO.Path]::Combine($RunPath,([guid]::NewGuid().ToString('N')+'.tmp'))
     Write-CFFlushed $tmp $script:Utf8.GetBytes(($State|ConvertTo-Json -Depth 80 -Compress))
     $target=[IO.Path]::Combine($RunPath,'state.json');Assert-CFNoLinks $target
-    if([IO.File]::Exists($target)){[IO.File]::Move($tmp,$target,$true)}else{[IO.File]::Move($tmp,$target)}
+    Move-CFMutableFile $tmp $target
 }
 function Get-CFActivePath([string]$RepoRoot,[string]$SessionId) { (Get-CFStorageContext $RepoRoot $SessionId).active_path }
 function Start-ControlFlowRun {
@@ -37,7 +37,7 @@ function Start-ControlFlowRun {
     if($contract.schema_version -cne '4.0.0'){throw 'NEW_RUN_REQUIRES_V4: migrate the legacy contract to a fresh V4 draft; existing runs are unchanged'}
     $paths=Get-ControlFlowStoragePaths $RepoRoot $contract.task_id $SessionId
     $canonical=$paths.contract_path
-    if([IO.Path]::GetFullPath($ContractPath) -cne [IO.Path]::GetFullPath($canonical)){throw 'CONTRACT_PATH_BINDING_MISMATCH'}
+    if((Get-CFFullPath $ContractPath) -cne (Get-CFFullPath $canonical)){throw 'CONTRACT_PATH_BINDING_MISMATCH'}
     Assert-CFNoLinks $canonical
     Assert-CFBaseline $RepoRoot $contract.baseline.commit|Out-Null
     $id=[guid]::NewGuid().ToString('N');$runPath=[IO.Path]::Combine($paths.task_path,'runs',$id)
@@ -57,7 +57,7 @@ function Start-ControlFlowRun {
             if([IO.File]::Exists($active)) { $prior=Get-ControlFlowActiveRun $RepoRoot $SessionId;if($prior.state.status -notin @('COMPLETED','CANCELLED')){throw 'SESSION_ALREADY_ACTIVE'} }
             $pointer=@{schema_version=$contract.schema_version;run_path=$runPath;run_id=$id;task_id=$contract.task_id;binding=$identity}
             $tmp=$active+'.'+[guid]::NewGuid().ToString('N')+'.tmp';Write-CFFlushed $tmp $script:Utf8.GetBytes(($pointer|ConvertTo-Json -Depth 20 -Compress))
-            if([IO.File]::Exists($active)){[IO.File]::Move($tmp,$active,$true)}else{[IO.File]::Move($tmp,$active)}
+            Move-CFMutableFile $tmp $active
         }finally{$activeLock.Dispose()}
     }
     return @{run_path=$runPath;run_id=$id;state=$state}
@@ -148,12 +148,17 @@ function Assert-CFV4Execution($Read,$ContractRead) {
     $pre=@($Read.evidence.events|Where-Object {$_.type -ceq 'preflight' -and $_.planning_epoch_id -eq $Read.state.planning_epoch_id})
     if($pre.Count -eq 0 -or $pre[-1].contract_digest -cne $ContractRead.digest){throw 'V4_PREFLIGHT_REQUIRED'}
 }
-function Test-CFV4Capture($Read,$ContractRead,$Source,[string]$CheckId,[switch]$RequireReport) {
+function Test-CFV4Capture($Read,$ContractRead,$Source,[string]$CheckId,[switch]$RequireReport,$InputDigests=$null) {
     $defs=@($ContractRead.contract.checks|Where-Object {$_.id -ceq $CheckId});if($defs.Count -ne 1){return $false};$def=$defs[0]
     $captures=@($Read.evidence.checks|Where-Object {$_.check_id -ceq $CheckId});if($captures.Count -eq 0){return $false};$capture=$captures[-1]
     if($capture.status -cne 'PASS' -or $capture.exit_code -ne 0 -or $capture.timed_out -or $capture.process_incomplete -or $capture.contract_digest -cne $ContractRead.digest -or $capture.command_digest -cne (Get-CFJsonHash $def) -or $capture.source_before -cne $Source.digest -or $capture.source_after -cne $Source.digest){return $false}
     if($RequireReport -or $def.ContainsKey('report')){if(-not $capture.ContainsKey('quality') -or $capture.quality.status -cne 'PASS' -or -not $capture.quality.ContainsKey('raw_report_ref')){return $false}}
-    if($def.ContainsKey('inputs')){if($capture.input_before -cne (Get-CFCheckInputDigest $Read.state.binding.worktree_realpath $def) -or $capture.input_after -cne $capture.input_before){return $false}}
+    if(-not (Test-CFV4MutationScope $def $capture)){return $false}
+    if(Test-CFCheckHasInputs $def){
+        $inputDigest=Get-CFCheckInputDigest $Read.state.binding.worktree_realpath $def
+        if(-not $capture.ContainsKey('input_before') -or -not $capture.ContainsKey('input_after') -or $capture.input_before -cne $inputDigest -or $capture.input_after -cne $inputDigest){return $false}
+        if($null -ne $InputDigests){$InputDigests[$CheckId]=$inputDigest}
+    }
     return $true
 }
 function Assert-CFForeignPreserved([string]$RepoRoot,[string]$RunPath,$Read) {
@@ -182,10 +187,7 @@ function Update-CFV4Event([string]$RepoRoot,[string]$RunPath,$Read,$Event,$Copy)
                     $id=$_.id;$caps=@($Read.evidence.checks|Where-Object {$_.check_id -ceq $id});$last=if($caps.Count -gt 0){$caps[-1]}else{$null}
                     [ordered]@{check_id=$id;status=$(if($null -eq $last){'NOT_RUN'}elseif(Test-CFV4Capture $Read $c $source $id){'PASS'}else{'FAIL'});capture=$last}
                 })
-                $a.profile_summary=@($contract.quality_profiles|ForEach-Object {
-                    $profile=$_;$capability=Get-CFV4ProfileCapability $contract $profile;$status=if($capability -ceq 'unsupported'){'UNSUPPORTED'}elseif($capability -ceq 'not_applicable'){'NOT_APPLICABLE'}elseif($capability -ceq 'unknown' -or $profile.check_ids.Count -eq 0){'NOT_RUN'}elseif(@($profile.check_ids|Where-Object {-not (Test-CFV4Capture $Read $c $source $_)}).Count -gt 0){'NOT_RUN'}else{'PASS'}
-                    [ordered]@{id=$profile.id;kind=$profile.kind;required=$profile.required;status=$status;capability=$profile.capability;check_ids=$profile.check_ids}
-                })
+                $a.profile_summary=@($contract.quality_profiles|ForEach-Object {Get-CFV4ProfileSummary $Read $c $source $_})
             }
             $text=ConvertTo-Json -InputObject $a -Depth 80 -Compress
             if(-not (Test-Json -Json $text -SchemaFile (Join-Path $script:CoreModuleRoot '../schemas/phase-artifact-v1.schema.json') -ErrorAction Stop)){throw 'INVALID_ARTIFACT_SCHEMA'}
@@ -194,6 +196,7 @@ function Update-CFV4Event([string]$RepoRoot,[string]$RunPath,$Read,$Event,$Copy)
             if($a.kind -cnotin $contract.workflow.required_artifacts){throw 'ARTIFACT_NOT_IN_WORKFLOW'}
             foreach($id in $a.criterion_refs){if($id -cnotin @($contract.criteria|ForEach-Object {$_.id})){throw 'INVALID_CRITERION_REFERENCE'}}
             if($a.kind -ceq 'qa-plan'){
+                Assert-CFV4MutationAssessment $contract $a.payload
                 $ids=Get-CFMap
                 foreach($scenario in $a.payload.scenarios){
                     if($ids.ContainsKey($scenario.id)){throw 'DUPLICATE_SCENARIO'};$ids[$scenario.id]=$true
@@ -316,17 +319,60 @@ function Update-CFV4Event([string]$RepoRoot,[string]$RunPath,$Read,$Event,$Copy)
         'review' {throw 'V4_REQUIRES_PHASE_REVIEW'}
     }
 }
+function Assert-CFMutationReportScope($Report,[string]$RepoRoot,[string[]]$Scope,[string]$WorkingDirectory) {
+    if($null -eq $Scope -or @($Scope).Count -eq 0){throw 'MUTATION_SCOPE_REQUIRED'}
+    $RepoRoot=Get-CFFullPath $RepoRoot
+    $comparison=if($IsWindows){[StringComparison]::OrdinalIgnoreCase}else{[StringComparison]::Ordinal}
+    $comparer=if($IsWindows){[StringComparer]::OrdinalIgnoreCase}else{[StringComparer]::Ordinal}
+    $expected=[Collections.Generic.Dictionary[string,string]]::new($comparer)
+    foreach($path in $Scope){
+        if([string]::IsNullOrWhiteSpace($path) -or [IO.Path]::IsPathRooted($path) -or $path -match '[\\:*?\[\]\x00-\x1f]' -or @($path.Split('/')|Where-Object {$_ -in @('','.','..')}).Count -gt 0){throw "MUTATION_SCOPE_INVALID:$path"}
+        if($expected.ContainsKey($path)){throw "MUTATION_SCOPE_INVALID:$path"}
+        $expected.Add($path,$path)
+    }
+    $projectRoot=[IO.Path]::GetFullPath([IO.Path]::Combine($RepoRoot,$WorkingDirectory))
+    if($Report.ContainsKey('projectRoot')){
+        if($Report.projectRoot -isnot [string] -or [string]::IsNullOrWhiteSpace($Report.projectRoot)){throw 'MUTATION_PROJECT_ROOT_INVALID'}
+        $projectRoot=[IO.Path]::GetFullPath([IO.Path]::Combine($projectRoot,$Report.projectRoot))
+    }
+    $relativeRoot=[IO.Path]::GetRelativePath($RepoRoot,$projectRoot)
+    if([IO.Path]::IsPathRooted($relativeRoot) -or $relativeRoot -eq '..' -or $relativeRoot.StartsWith('..'+[IO.Path]::DirectorySeparatorChar,$comparison)){throw 'MUTATION_PROJECT_ROOT_INVALID'}
+    Assert-CFNoLinks $projectRoot
+    $observed=[Collections.Generic.HashSet[string]]::new($comparer)
+    foreach($key in $Report.files.Keys){
+        if([string]::IsNullOrWhiteSpace($key) -or [IO.Path]::IsPathRooted($key) -or $key -match '[\\:*?\[\]\x00-\x1f]' -or @($key.Split('/')|Where-Object {$_ -in @('','.','..')}).Count -gt 0){throw "MUTATION_REPORT_PATH_INVALID:$key"}
+        $full=[IO.Path]::GetFullPath([IO.Path]::Combine($projectRoot,$key))
+        $relative=[IO.Path]::GetRelativePath($RepoRoot,$full).Replace([IO.Path]::DirectorySeparatorChar,'/')
+        if(-not $expected.ContainsKey($relative)){throw "MUTATION_REPORT_OUTSIDE_SCOPE:$relative"}
+        if(-not $observed.Add($relative)){throw "MUTATION_REPORT_DUPLICATE_FILE:$relative"}
+        Assert-CFNoLinks $full
+        if(-not [IO.File]::Exists($full)){throw "MUTATION_REPORT_SOURCE_MISSING:$relative"}
+        $file=$Report.files[$key]
+        if($file -isnot [Collections.IDictionary] -or -not $file.ContainsKey('source') -or $file.source -isnot [string]){throw "MUTATION_REPORT_SOURCE_MISSING:$relative"}
+        # Preserve line endings and all text; only the encoding BOM is not source.
+        $source=[IO.File]::ReadAllText($full,$script:Utf8)
+        if($source -cne $file.source.TrimStart([char]0xfeff)){throw "MUTATION_REPORT_SOURCE_MISMATCH:$relative"}
+    }
+    foreach($path in $Scope){if(-not $observed.Contains($path)){throw "MUTATION_REPORT_SCOPE_MISSING:$path"}}
+    return @($Scope)
+}
 function Read-ControlFlowQualityReport {
-    param([string]$Path,[string]$Format,[ValidateRange(1,2147483647)][int]$MinimumTests=1,[Nullable[double]]$MinimumScore)
+    param([string]$Path,[string]$Format,[ValidateRange(1,2147483647)][int]$MinimumTests=1,[Nullable[double]]$MinimumScore,[string]$RepoRoot,[string[]]$Scope,[string]$WorkingDirectory='.')
     if($null -ne $MinimumScore -and ($MinimumScore -lt 0 -or $MinimumScore -gt 100 -or [double]::IsNaN($MinimumScore))){throw 'INVALID_MINIMUM_SCORE'}
     $q=@{status='ERROR';format=$Format;executed_tests=$null;assertion_count=$null;mutation_score=$null;counts=@{};limitations=@()}
     if($Format -cnotin @('junit','nunit3','stryker-json')){$q.status='UNSUPPORTED';return $q}
     try{
+        $Path=Get-CFFullPath $Path
         Assert-CFNoLinks $Path
         $file=[IO.FileInfo]::new($Path);if(-not $file.Exists){$q.status='NOT_RUN';return $q};if($file.Length -gt 33554432){throw 'REPORT_TOO_LARGE'}
         if($Format -ceq 'stryker-json'){
+            $q.scope_verified=$false;$q.acceptance_status='NOT_EVALUATED';$q.minimum_score=$MinimumScore
             $report=ConvertFrom-Json -InputObject ([IO.File]::ReadAllText($Path,$script:Utf8)) -AsHashtable -Depth 80
-            if(-not $report.ContainsKey('schemaVersion') -or -not $report.ContainsKey('files')){throw 'INVALID_MUTATION_REPORT'}
+            if($report -isnot [Collections.IDictionary] -or -not $report.ContainsKey('schemaVersion') -or -not $report.ContainsKey('files') -or $report.files -isnot [Collections.IDictionary]){throw 'INVALID_MUTATION_REPORT'}
+            if($RepoRoot){
+                $q.verified_scope=@(Assert-CFMutationReportScope $report $RepoRoot $Scope $WorkingDirectory)
+                $q.scope_verified=$true
+            }elseif($null -ne $Scope -and @($Scope).Count -gt 0){throw 'MUTATION_REPOSITORY_REQUIRED'}
             $counts=@{};$count=0
             foreach($f in $report.files.Values){
                 $seen=Get-CFMap
@@ -345,7 +391,8 @@ function Read-ControlFlowQualityReport {
             if(($detected+$undetected) -eq 0){$q.status='FAIL';return $q}
             $q.mutation_score=100.0*$detected/($detected+$undetected)
             $q.status=if($null -ne $MinimumScore -and $q.mutation_score -lt $MinimumScore){'FAIL'}else{'PASS'}
-            $q.limitations=@('Stryker JSON report ingestion only; no language-tool capability inferred.','PASS records a completed report and configured threshold, not full correctness.')
+            $q.acceptance_status=if($null -eq $MinimumScore){'UNCONFIGURED'}else{$q.status}
+            $q.limitations=@('Stryker JSON report ingestion only; no language-tool capability inferred.','PASS records a completed report and configured threshold, not full correctness.','UNCONFIGURED acceptance is measurement only; source/scope consistency does not authenticate tool execution.')
             return $q
         }
         $settings=[Xml.XmlReaderSettings]::new();$settings.DtdProcessing=[Xml.DtdProcessing]::Prohibit;$settings.XmlResolver=$null
@@ -386,9 +433,24 @@ function Get-CFCheckReportPath([string]$RepoRoot,$Check) {
     if([IO.Path]::IsPathRooted($path) -or $path.Contains('\') -or $path -match '[:*?]' -or @($path.Split('/')|Where-Object {$_ -in @('','.','..')}).Count -gt 0){throw 'INVALID_REPORT_PATH'}
     $full=[IO.Path]::GetFullPath([IO.Path]::Combine($RepoRoot,$path));Assert-CFNoLinks $full;return $full
 }
+function Test-CFCheckHasInputs($Check) {
+    return $Check.ContainsKey('inputs') -or ($Check.ContainsKey('report') -and $Check.report.format -ceq 'stryker-json')
+}
+function Get-CFCheckInputPaths($Check) {
+    $paths=Get-CFMap
+    if($Check.ContainsKey('inputs')){foreach($path in $Check.inputs){$paths[$path]=$true}}
+    if($Check.ContainsKey('report') -and $Check.report.format -ceq 'stryker-json'){
+        if(-not $Check.report.ContainsKey('scope') -or @($Check.report.scope).Count -eq 0){throw 'MUTATION_SCOPE_REQUIRED'}
+        foreach($path in $Check.report.scope){
+            if($path -isnot [string] -or [string]::IsNullOrWhiteSpace($path) -or [IO.Path]::IsPathRooted($path) -or $path -match '[\\:*?\[\]\x00-\x1f]' -or @($path.Split('/')|Where-Object {$_ -in @('','.','..')}).Count -gt 0){throw "MUTATION_SCOPE_INVALID:$path"}
+            $paths[$path]=$true
+        }
+    }
+    return Get-CFSorted $paths.Keys
+}
 function Get-CFCheckInputDigest([string]$RepoRoot,$Check) {
     $RepoRoot=(Get-CFIdentity $RepoRoot).worktree_realpath
-    $entries=@(foreach($path in (Get-CFSorted $Check.inputs)){
+    $entries=@(foreach($path in (Get-CFCheckInputPaths $Check)){
         $full=[IO.Path]::GetFullPath([IO.Path]::Combine($RepoRoot,$path))
         Assert-CFNoLinks $full
         $missing=$false
@@ -415,6 +477,7 @@ function Update-ControlFlowRun {
     $lock=Open-CFWriter $RunPath $RepoRoot
     try {
         $read=Read-ControlFlowRun $RepoRoot $RunPath;$s=$read.state;$e=$read.evidence
+        $RepoRoot=$s.binding.worktree_realpath
         if($null -ne $ExpectedRevision -and $s.revision -ne $ExpectedRevision){throw 'REVISION_CONFLICT'}
         $eventCopy=$Event|ConvertTo-Json -Depth 40|ConvertFrom-Json -AsHashtable
         $eventCopy.recorded_at=[DateTime]::UtcNow.ToString('o')
@@ -454,6 +517,16 @@ function Update-ControlFlowRun {
                 $sha=if($Event.ContainsKey('commit_sha')){$Event.commit_sha}else{''}
                 $gate=Test-ControlFlowGate $RepoRoot $RunPath 'Completion' -CommitSha $sha
                 if($gate.status -ne 'PASS'){throw ('COMPLETION_GATE_REJECTED: '+($gate.reasons -join ','))}
+                $publishSource=Get-CFRunSource $RepoRoot $RunPath $s
+                $publishContract=Read-ControlFlowContract $s.contract_path
+                if($publishSource.digest -cne $gate.source_digest -or $publishContract.digest -cne $gate.contract_hash){throw 'COMPLETION_OBSERVATION_CHANGED'}
+                foreach($id in $gate.input_digests.Keys){
+                    $definition=@($publishContract.contract.checks|Where-Object {$_.id -ceq $id})[0]
+                    if((Get-CFCheckInputDigest $RepoRoot $definition) -cne $gate.input_digests[$id]){throw ('COMPLETION_INPUT_CHANGED:'+$id)}
+                }
+                $pending=Read-CFPendingInterrupt $RunPath $s
+                $ack=if($s.ContainsKey('acknowledged_interrupt_id')){$s.acknowledged_interrupt_id}else{$null}
+                if($null -ne $pending -and $pending.interrupt_id -cne $ack){throw 'COMPLETION_INTERRUPT_PENDING'}
                 $s.status='COMPLETED';if($s.schema_version -ceq '4.0.0'){$s.lifecycle_closed=$true};$eventCopy.gate=$gate
             }
             default {throw 'UNSUPPORTED_EVENT'}
@@ -479,13 +552,13 @@ function Capture-ControlFlowCheck {
         if([IO.Path]::IsPathRooted($rel) -or $rel -eq '..' -or $rel.StartsWith('../') -or $rel.StartsWith('..\')){throw 'CHECK_CWD_OUTSIDE_REPOSITORY'}
         Assert-CFNoLinks $cwd
         $before=Get-CFRunSource $RepoRoot $RunPath $state
-        $inputBefore=if($check.ContainsKey('inputs')){Get-CFCheckInputDigest $RepoRoot $check}else{$null}
+        $inputBefore=if(Test-CFCheckHasInputs $check){Get-CFCheckInputDigest $RepoRoot $check}else{$null}
         $reportPath=$null;$reportStamp=$null;if($check.ContainsKey('report')){$reportPath=Get-CFCheckReportPath $RepoRoot $check;if([IO.File]::Exists($reportPath)){$reportStamp=[IO.File]::GetLastWriteTimeUtc($reportPath).Ticks}}
         $timeout=if($check.ContainsKey('timeout_seconds')){[int]$check.timeout_seconds}else{120}
         $command='& { '+$check.command+"`n"+' }; if (-not $?) { exit 1 }; if ($null -ne $LASTEXITCODE) { exit $LASTEXITCODE }'
         $result=Invoke-CFProcess (Join-Path $PSHOME $(if($IsWindows){'pwsh.exe'}else{'pwsh'})) @('-NoProfile','-NonInteractive','-Command',$command) $cwd @{} $timeout $true
         $after=Get-CFRunSource $RepoRoot $RunPath $state;$afterContract=Read-ControlFlowContract $state.contract_path
-        $inputAfter=if($check.ContainsKey('inputs')){Get-CFCheckInputDigest $RepoRoot $check}else{$null}
+        $inputAfter=if(Test-CFCheckHasInputs $check){Get-CFCheckInputDigest $RepoRoot $check}else{$null}
         $status=if($result.timed_out){'TIMEOUT'}elseif($result.process_incomplete){'FAIL'}elseif($before.digest -cne $after.digest -or $c.digest -cne $afterContract.digest -or $inputBefore -cne $inputAfter){'STALE'}elseif($result.exit_code -ne 0){'FAIL'}else{'PASS'}
         $capture=@{capture_id=[guid]::NewGuid().ToString('N');check_id=$CheckId;status=$status;exit_code=$result.exit_code;timed_out=$result.timed_out;command=$check.command;working_directory=$check.working_directory;command_digest=(Get-CFJsonHash $check);contract_digest=$c.digest;source_before=$before.digest;source_after=$after.digest;recorded_at=[DateTime]::UtcNow.ToString('o');stdout_ref=(Write-CFImmutable $RunPath 'output' $result.stdout 'stdout.bin');stderr_ref=(Write-CFImmutable $RunPath 'output' $result.stderr 'stderr.bin')}
         $capture.process_incomplete=$result.process_incomplete
@@ -493,7 +566,7 @@ function Capture-ControlFlowCheck {
         if($check.ContainsKey('report')){
             $min=if($check.report.ContainsKey('minimum_tests')){[int]$check.report.minimum_tests}else{1}
             $score=if($check.report.ContainsKey('minimum_score')){[double]$check.report.minimum_score}else{$null}
-            $quality=Read-ControlFlowQualityReport $reportPath $check.report.format $min $score
+            $quality=Read-ControlFlowQualityReport -Path $reportPath -Format $check.report.format -MinimumTests $min -MinimumScore $score -RepoRoot $RepoRoot -Scope $check.report.scope -WorkingDirectory $check.working_directory
             foreach($key in @('tool','version','scope','config','baseline','exclusions')){$quality[$key]=$check.report[$key]}
             if([IO.File]::Exists($reportPath)){
                 Assert-CFNoLinks $reportPath
@@ -503,7 +576,7 @@ function Capture-ControlFlowCheck {
             $capture.quality=$quality
             if($capture.status -ceq 'PASS' -and $quality.status -cne 'PASS'){$capture.status='FAIL'}
         }
-        if($check.ContainsKey('inputs')){$capture.input_before=$inputBefore;$capture.input_after=$inputAfter}
+        if(Test-CFCheckHasInputs $check){$capture.input_before=$inputBefore;$capture.input_after=$inputAfter}
         $read.evidence.checks=@($read.evidence.checks)+@($capture);$state.revision++;Publish-CFState $RunPath $state $read.evidence
         return $capture
     }finally{$lock.Dispose()}

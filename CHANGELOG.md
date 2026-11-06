@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- Recheck source and contract before completion and state publication, reject
+  reserved V4 design-review IDs, and automatically hash mutation scope inputs.
+- Resolve relative filesystem paths against PowerShell location; preserve path
+  protections. Make mutable JSON replacement reader-safe on Windows, with
+  bounded sharing retries and optional interrupt turn IDs.
+- Publish inventory sidecars with release archives and pin release actions and
+  Pester to immutable versions and verified package bytes.
+
+- Require an explicit run/skip/unsupported sensitivity assessment for newly saved
+  code-judged QA plans, with scoped checks and bounded acceptance. Guide bugfix
+  regressions through an old-defect negative control; preserve human-only/light
+  routes and historical artifact readability. Existing tools remain a prerequisite.
+- Require positive project-chosen thresholds for required available mutation
+  profiles, bind Stryker source and exact file scope to captures, and report
+  profile failures, timeouts, stale and missing evidence with per-check reasons.
+  Optional unthresholded mutation reports are measurements, not accepted sensitivity.
+
 - Read JUnit/NUnit root element names through the XML DOM, so standard `name`
   attributes cannot hide or spoof the element name in PowerShell.
 - Reject unsupported JUnit nonexecution statuses and disabled counts instead of

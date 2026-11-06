@@ -71,3 +71,9 @@ approval. QA defines external expected results, negative/boundary cases and
 their sources before implementation planning. Downstream checks do not edit
 approved design. Changed intent/policy/design needs a fresh decision. Re-entry
 uses explicit resume mode planning and preserves original foreign ownership.
+
+New code-judged QA plans require `payload.mutation_assessment`: choose
+run/skip/unsupported with the fields and bindings in
+[test sensitivity](../controlflow/references/evidence.md#test-sensitivity).
+Plan a bugfix regression that fails on the old defect, then passes on the fix;
+bounded mutation strengthens that evidence when warranted by the changed risk.

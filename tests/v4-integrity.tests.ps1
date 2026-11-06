@@ -13,8 +13,9 @@ $d2=Artifact $r $rp design @($context) -Revision 2
 Throws {Update-ControlFlowRun $r $rp @{type='resume';user_decision_ref='user:old';decision_receipt_id=$receipt}} 'ApprovedOldRevisionCannotResume'
 $decision=ReviewArtifact $r $rp $d2 human APPROVED;$receipt=$decision.evidence.events[-1].receipt_id
 Update-ControlFlowRun $r $rp @{type='resume';user_decision_ref='user:current';decision_receipt_id=$receipt}|Out-Null
-$bad=@{scenarios=@(@{id='S1';inputs='fixture';expected='External requested behavior';expectation_source='user:implement';criterion_refs=@('C1');check_refs=@('imaginary');negative='Invalid';boundary='Empty'})}
-Throws {Artifact $r $rp qa-plan @($d2) $bad} 'ImaginaryQACheckRejected'
+$bad=@{scenarios=@(@{id='S1';inputs='fixture';expected='External requested behavior';expectation_source='user:implement';criterion_refs=@('C1');check_refs=@('imaginary');negative='Invalid';boundary='Empty'});mutation_assessment=@{decision='skip';method='none';rationale='This fixture tests rejection of unknown QA check references; mutation sensitivity is outside its scope';scope=@();criterion_refs=@();check_refs=@()}}
+$qaError=$null;try{Artifact $r $rp qa-plan @($d2) $bad|Out-Null}catch{$qaError=$_.Exception.Message}
+Assert ($qaError -ceq 'INVALID_QA_CHECK') 'ImaginaryQACheckRejected'
 $qa=Artifact $r $rp qa-plan @($d2);$impl=Artifact $r $rp implementation-plan @($qa)
 $v=Get-Content $p -Raw|ConvertFrom-Json -AsHashtable;$v.contract_status='final';[IO.File]::WriteAllText($p,($v|ConvertTo-Json -Depth 40))
 Update-ControlFlowRun $r $rp @{type='preflight';status='APPROVED'}|Out-Null

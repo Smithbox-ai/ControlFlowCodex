@@ -15,7 +15,8 @@ try {
     $repoRoot=$payload.cwd
     if ($Event -eq 'Interrupt') {
         # A bounded notification remains durable while capture holds the evidence writer lock.
-        $notification=Request-ControlFlowInterrupt -RepoRoot $repoRoot -SessionId $payload.session_id -TurnId $payload.turn_id
+        $turnId=if($payload.ContainsKey('turn_id')){$payload.turn_id}else{$null}
+        $notification=Request-ControlFlowInterrupt -RepoRoot $repoRoot -SessionId $payload.session_id -TurnId $turnId
         if($null -eq $notification){Publish @{};exit 0}
         Publish @{systemMessage='ControlFlow INTERRUPTED. Explicit user resumption is required.'}
         exit 0

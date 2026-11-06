@@ -12,6 +12,12 @@ The supported adapter is a local PowerShell 7.4 or newer command hook;
 It consumes JSON on stdin and emits one JSON object on stdout. It does not parse
 session transcripts or intercept commit command text.
 
+Interrupt `turn_id` is optional. Mutable state, active pointers and the interrupt
+mailbox use readers compatible with atomic generation replacement. On Windows,
+existing files use `File.Replace`; transient sharing conflicts retry within
+200 ms and persistent failures stay visible. This does not bypass native hook
+trust or establish that a host delivered a callback.
+
 Native callback `session_id` and `cwd` select an already active V4 run or an
 existing V3 run with matching runtime and contract versions. Existing V3 runs
 remain visibly `legacy_semantics`; a callback never creates a new legacy run. An absent

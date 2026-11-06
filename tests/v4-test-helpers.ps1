@@ -15,7 +15,7 @@ function Artifact($Root,$Run,$Kind,$Inputs=@(),$Payload=$null,[int]$Revision=1) 
  if($null -eq $Payload){$Payload=switch($Kind){
  'context' {@{goals=@('Requested behavior');non_goals=@('Deploy');decisions=@('user:implement');assumptions=@();unknowns=@();code_refs=@('owned.txt');invariants=@('Native authority')}}
  'design' {@{behavior='Bounded behavior';boundaries=@('owned.txt');data_dependencies=@();selected='Minimal change';rejected_alternative='New orchestrator';risks=@('Regression');rollback='Restore owned diff'}}
- 'qa-plan' {@{scenarios=@(@{id='S1';inputs='fixture';expected='External requested behavior';expectation_source='user:implement';criterion_refs=@('C1');check_refs=@('check-1');negative='Invalid input fails';boundary='Empty input'})}}
+ 'qa-plan' {@{scenarios=@(@{id='S1';inputs='fixture';expected='External requested behavior';expectation_source='user:implement';criterion_refs=@('C1');check_refs=@('check-1');negative='Invalid input fails';boundary='Empty input'});mutation_assessment=@{decision='skip';method='none';rationale='Fixture checks exercise workflow bookkeeping; source mutation sensitivity is outside this fixture';scope=@();criterion_refs=@();check_refs=@()}}}
  'implementation-plan' {@{parts=@(@{id='part-1';components=@('owned.txt');depends_on=@();readiness='QA baseline approved';criterion_refs=@('C1')})}}
  'qa-recheck' {@{baseline_ref=$Inputs[0];dispositions=@(@{scenario_id='S1';status='PASS';expected='External requested behavior';evidence_refs=@('check-1');drift='none'})}}
  'review-packet' {@{changes=@('Bounded behavior');invariants=@('Native ownership');diff_refs=@('owned.txt');results=@('check-1');limitations=@('Manual assurance');open_decisions=@();rollback='Restore diff'}}

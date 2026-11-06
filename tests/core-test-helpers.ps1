@@ -52,3 +52,9 @@ function RemoveFixture([string]$Root) {
     Remove-Item -LiteralPath $resolved -Recurse -Force
 }
 function LoadCore { $p=Join-Path $script:CoreRoot 'scripts/ControlFlow.Core.psm1';Assert (Test-Path $p) 'deterministic core module exists';Import-Module $p -Force -DisableNameChecking }
+function Get-TestControlFlowModule {
+    $expected=[IO.Path]::GetFullPath((Join-Path $script:CoreRoot 'scripts/ControlFlow.Core.psm1'))
+    $modules=@(Get-Module ControlFlow.Core|Where-Object {$_.Path -and [IO.Path]::GetFullPath($_.Path) -ceq $expected})
+    if($modules.Count -ne 1){throw 'TEST_REQUIRES_EXACT_CORE_MODULE'}
+    return $modules[0]
+}

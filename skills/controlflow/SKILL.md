@@ -27,6 +27,10 @@ Read [execution](references/execution.md) for non-trivial tasks,
 worktree and untracked ownership. Overlap requires isolation or an explicit
 ownership decision. Commit only when explicitly requested.
 
+Assess code-target test sensitivity in QA using
+[the evidence recipe](references/evidence.md#test-sensitivity). Green tests alone
+do not prove fault detection.
+
 New runs use `4.0.0` via [v4](../../docs/v4-runtime.md): fixed artifacts,
 domain/risk review, manual decisions and compact packets. Classify work type and
 domain; tiny core/unknown changes retain human gates. Existing V3 runs keep

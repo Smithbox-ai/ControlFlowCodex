@@ -171,6 +171,49 @@
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "ControlFlow immutable phase artifact",
+  "$defs": {
+    "assessment_text": { "type": "string", "minLength": 1, "pattern": "\\S" },
+    "assessment_refs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/assessment_text" }
+    },
+    "mutation_assessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision", "method", "rationale", "scope", "criterion_refs", "check_refs"],
+      "properties": {
+        "decision": { "enum": ["run", "skip", "unsupported"] },
+        "method": { "enum": ["stryker", "controlled", "none"] },
+        "rationale": { "$ref": "#/$defs/assessment_text" },
+        "scope": { "$ref": "#/$defs/assessment_refs" },
+        "criterion_refs": { "$ref": "#/$defs/assessment_refs" },
+        "check_refs": { "$ref": "#/$defs/assessment_refs" },
+        "budget": { "$ref": "#/$defs/assessment_text" },
+        "acceptance": { "$ref": "#/$defs/assessment_text" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "decision": { "const": "run" } } },
+          "then": {
+            "required": ["budget", "acceptance"],
+            "properties": {
+              "method": { "enum": ["stryker", "controlled"] },
+              "scope": { "minItems": 1 },
+              "criterion_refs": { "minItems": 1 },
+              "check_refs": { "minItems": 1 }
+            }
+          },
+          "else": {
+            "properties": {
+              "method": { "const": "none" },
+              "check_refs": { "maxItems": 0 }
+            }
+          }
+        }
+      ]
+    }
+  },
   "allOf": [
     {
       "if": {
@@ -349,6 +392,7 @@
               "scenarios"
             ],
             "properties": {
+              "mutation_assessment": { "$ref": "#/$defs/mutation_assessment" },
               "scenarios": {
                 "type": "array",
                 "minItems": 1,

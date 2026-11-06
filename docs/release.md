@@ -22,7 +22,7 @@ Explicitly build `-Flavor NativeLegacy` for this host. The separately named
 and package inventory, excluding only root `plugin.json`. It keeps
 `.codex-plugin/plugin.json`. Its SHA-256 and `.inventory.json` sidecars identify
 the flavor, all file hashes, host limitation and `callbacks=NOT_RUN`. Preserve
-the previous Universal ZIP; other hosts remain unverified.
+the previous Universal ZIP and both sidecars; other hosts remain unverified.
 
 Legacy skill discovery is recursive and has different MCP handling. This flavor
 is restricted to exactly four existing direct skill entries, no links/reparse
@@ -48,7 +48,8 @@ Registration failure restores the previous active installation. Unknown/custom
 files are preserved in recovery backups. `-Uninstall -Force` removes managed local
 source/registration only; native cache/trust/config/run data remain untouched.
 
-Before real rollout preserve the owned source, marketplace and hashes. Refresh
+Before real rollout preserve the owned source, marketplace, exact ZIP, its
+`.zip.sha256` and `.zip.inventory.json` sidecars, and hashes. Refresh
 native cache only with supported `codex plugin add`, then compare the full file
 set/hashes against the selected artifact. Never edit cache or trusted hashes
 manually. To roll back, extract the saved previous artifact and run its installer
@@ -60,8 +61,12 @@ requirement; it is not supplied by a functionally tested installable candidate.
 
 The release workflow runs the contract suite on Windows, Linux, and macOS,
 builds and smoke-installs the extracted ZIP, and publishes a GitHub prerelease
-containing the ZIP, its SHA-256 checksum, and notes from the matching versioned
-section of `CHANGELOG.md`. The workflow requires the tag, manifest, archive,
+containing the ZIP, its `.zip.sha256` checksum and `.zip.inventory.json` inventory,
+and notes from the matching versioned section of `CHANGELOG.md`. The uploaded
+workflow artifact retains all three files and `release-notes.md` for recovery.
+Release actions use immutable commit pins, and both jobs verify the same Pester
+5.9.1 package SHA-256 as CI before extracting and importing it.
+The workflow requires the tag, manifest, archive,
 and changelog version to agree. Packaging uses `git archive` of a resolved HEAD
 commit in an isolated runner temporary directory, and the tag verifier requires
 that same source commit. Before extraction, it compares every archive file's
@@ -113,13 +118,14 @@ release creation.
 `gh release create` is not atomic: a failed upload can leave a draft with some
 assets. If a release already exists, do not rerun with asset replacement and do
 not delete it automatically. Inspect the tag object and commit, title, notes,
-prerelease/draft state, and all assets. Retrieve the ZIP, checksum and notes from
+prerelease/draft state, and all assets. Retrieve the ZIP, its `.zip.sha256` and
+`.zip.inventory.json` sidecars, and `release-notes.md` from
 the **original failed workflow's uploaded artifact**; a later rebuilt ZIP can
 have different bytes even for the same source. Compare every existing asset's
 SHA-256 and filename with those preserved files. If all match and the release
-is published with both assets, publication is already complete. If a draft has
+is published with all three assets, publication is already complete. If a draft has
 matching existing assets, an authorized operator may upload only the missing
-preserved assets without `--clobber`, recheck both hashes, and publish that
+preserved assets without `--clobber`, recheck all three hashes, and publish that
 draft. If metadata or any hash differs, an asset digest is unavailable, or the
 original artifact is unavailable, stop and choose a new version or an explicit
 manual recovery; do not overwrite the existing tag or assets.

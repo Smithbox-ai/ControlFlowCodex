@@ -26,6 +26,10 @@ external files, environment variables and other outside inputs are not observed;
 recapture checks when any of those inputs changes. Do not infer their freshness
 from a PASS gate.
 
+For Stryker checks, literal source files in `report.scope` are also automatic
+inputs. This includes ignored sources; changing one makes the capture stale.
+Old mutation captures without these input hashes need recapture.
+
 On Unix, a check must not detach processes from its dedicated process group.
 Processes that leave that group can evade observation and cleanup; the group is
 not a security boundary and the gate cannot prove their completion.
@@ -62,3 +66,65 @@ current captures prove process outcome and freshness, not test counts. Every
 declared report remains mandatory, including for QA rechecks and completion.
 Declare reports for checks whose acceptance depends on discovered/executed tests;
 do not substitute a synthetic test report for an ordinary command check.
+
+## Test sensitivity
+
+For each newly saved code-judged QA plan, include `payload.mutation_assessment`
+before the implementation plan. Full human-only plans and light docs are exempt
+from this assessment guard; historic saved QA and V3 evidence remain readable.
+The assessment is a decision record, not evidence that the tests are adequate.
+
+| Field | Content |
+|---|---|
+| `decision` | `run`, `skip`, or `unsupported` |
+| `method` | `stryker`, `controlled`, or `none` |
+| `rationale` | Changed risk, available tooling, and why this decision is proportionate |
+| `scope` | Literal repository-relative source file paths, with `/` separators; no globs |
+| `criterion_refs` | Existing criterion IDs the sensitivity decision addresses |
+| `check_refs` | Existing check IDs; a run requires nonempty references, also present in QA scenarios |
+| `budget`, `acceptance` | For `run`, nonempty strings defining limits and the expected sensitivity result |
+
+A run needs nonempty scope, criterion_refs and check_refs. Each run check must
+also occur in a QA scenario, so normal definition, capture and freshness bindings
+apply. Choose a bounded run for recurring bugs, critical access, financial or
+data-integrity invariants, changed comparisons, and branch refactors when an
+existing suitable mechanism is available. Budget files/faults and execution time;
+state which relevant faults must be detected and how survivors are dispositioned.
+There is no global mutation-score target.
+
+Before choosing unsupported, check whether the existing deterministic tests can
+exercise a bounded fault in an isolated copy. Verify both harness and isolation
+availability; an absent mutation tool alone does not exclude controlled checks.
+
+- `run` / `stryker`: use existing Stryker tooling, `stryker-json` report checks
+  and a mutation quality profile. In a final contract, every check in a required,
+  available mutation profile needs an explicit project-chosen `minimum_score > 0`.
+  Optional reports without a threshold are measurement; they do not establish
+  accepted sensitivity. Inspect relevant survivors and no-coverage results even
+  when an aggregate score meets its threshold.
+- `run` / `controlled`: use ordinary declared checks in an isolated copy. Record
+  each fault -> expected failing test -> actual result, verify the intended test
+  failure rather than a build/harness error, and restore the copy. The outer check
+  succeeds only when these assertions and restoration succeed. Keep injected
+  defects out of the active source. This is bounded sensitivity evidence, not a
+  Stryker report or invented language-wide mutation support.
+- `skip` / `none`: use empty check_refs and an honest rationale tied to risk and
+  cost. Docs or mechanical changes can justify skipping. A green suite alone
+  cannot justify it.
+- `unsupported` / `none`: use empty check_refs and state the missing suitable
+  tool or isolation capability and the remaining gap. Do not install tools or
+  invent adapters to satisfy a profile; required unsupported evidence blocks.
+
+For bugfixes, plan and demonstrate a regression that fails on the old defect,
+then passes on the fixed source. Execute new tests and any isolated old-defect
+control after approved preflight. Preserve the original external expected result;
+an unrelated failure does not establish that the regression detects the defect.
+If a reliable old-defect control is unavailable, record the evidence gap instead
+of claiming the bugfix is proven. Mutation does not replace that regression.
+
+QA recheck compares the unchanged expected results with actual captured output,
+fault dispositions and limitations. The packet retains skipped/unsupported work,
+survivors and per-check observations. Reviewers judge semantic quality; the
+runtime verifies bindings, reports and declared thresholds, not test adequacy or
+complete correctness. See [quality capabilities](../../../docs/v4-runtime.md#quality-capabilities)
+for report source/scope binding and profile status meanings.

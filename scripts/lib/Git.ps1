@@ -3,6 +3,17 @@ $ErrorActionPreference='Stop'
 $script:Utf8=[Text.UTF8Encoding]::new($false,$true)
 function Get-CFHash([byte[]]$Bytes) { [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($Bytes)).ToLowerInvariant() }
 function Get-CFJsonHash($Value) { Get-CFHash $script:Utf8.GetBytes((ConvertTo-Json -InputObject $Value -Depth 80 -Compress)) }
+function Get-CFFullPath([string]$Path) {
+    if([string]::IsNullOrWhiteSpace($Path)){throw 'FILESYSTEM_PATH_REQUIRED'}
+    # Native absolute paths keep literal Unix backslashes and ignore provider location.
+    if([IO.Path]::IsPathFullyQualified($Path)){return [IO.Path]::GetFullPath($Path)}
+    $provider=$null;$drive=$null
+    try{$full=$ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path,[ref]$provider,[ref]$drive)}
+    catch{throw 'FILESYSTEM_PATH_REQUIRED'}
+    if($provider.Name -ne 'FileSystem'){throw 'FILESYSTEM_PATH_REQUIRED'}
+    # PowerShell location is runspace-local; never change the process cwd to resolve it.
+    return [IO.Path]::GetFullPath($full)
+}
 function Resolve-CFGroupSignalResult([int]$Result,[int]$ErrorNumber) {
     if($Result -eq 0){return $true}
     # POSIX ESRCH alone establishes that the target process group does not exist.
@@ -241,6 +252,7 @@ $child.WaitForExit();$writer.WriteLine([string]$child.Id);$writer.Dispose();[voi
     }
 }
 function Invoke-CFGit([string]$Root,[string[]]$Arguments,[hashtable]$Environment=@{}) {
+    $Root=Get-CFFullPath $Root
     $r=Invoke-CFProcess 'git' (@('-C',$Root)+$Arguments) $Root $Environment
     if($r.timed_out -or $r.exit_code -ne 0){throw "GIT_OBSERVATION_FAILED: $($Arguments[0]): $($script:Utf8.GetString($r.stderr))"}
     return ,$r.stdout
@@ -255,12 +267,12 @@ function Get-CFNul([byte[]]$Bytes) {
 function Get-CFMap { return ,[Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal) }
 function Get-CFSorted($Values) { $a=[string[]]@($Values);[Array]::Sort($a,[StringComparer]::Ordinal);return $a }
 function Get-CFIdentity([string]$Root) {
-    $rootFull=[IO.Path]::GetFullPath($Root)
+    $rootFull=Get-CFFullPath $Root
     $top=Get-CFGitText $rootFull @('rev-parse','--path-format=absolute','--show-toplevel')
     $dir=Get-CFGitText $rootFull @('rev-parse','--absolute-git-dir')
     $item=Get-Item -LiteralPath $top -Force
     if($item.LinkType){$top=$item.ResolveLinkTarget($true).FullName}
-    return @{worktree_realpath=[IO.Path]::GetFullPath($top);git_dir_realpath=[IO.Path]::GetFullPath($dir)}
+    return @{worktree_realpath=(Get-CFFullPath $top);git_dir_realpath=(Get-CFFullPath $dir)}
 }
 function Get-CFTree([string]$Root,[string]$Commit) {
     $map=Get-CFMap
@@ -322,9 +334,11 @@ function Get-ControlFlowGitSnapshot {
 }
 function Get-ControlFlowSourceDigest {
     param([Parameter(Mandatory)][string]$RepoRoot,[Parameter(Mandatory)]$Baseline,[string]$ArtifactRoot,[string]$SessionId)
+    $RepoRoot=Get-CFFullPath $RepoRoot
     $base=if($Baseline -is [string]){$Baseline}else{$Baseline.commit}
     Assert-CFBaseline $RepoRoot $base|Out-Null
     $snapshot=Get-ControlFlowGitSnapshot $RepoRoot $ArtifactRoot $SessionId
+    $RepoRoot=$snapshot.binding.worktree_realpath
     $tree=Get-CFTree $RepoRoot $base;$map=Get-CFMap
     foreach($entry in $snapshot.working){$map[$entry.path]=$entry}
     foreach($path in $tree.Keys){if(-not $map.ContainsKey($path)){$map[$path]=Get-CFEffective $RepoRoot $path $tree[$path].mode}}

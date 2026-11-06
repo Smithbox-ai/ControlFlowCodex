@@ -33,6 +33,8 @@ $planYaml = Read-Skill "skills/controlflow-plan/agents/openai.yaml"
 $verifyYaml = Read-Skill "skills/controlflow-verify/agents/openai.yaml"
 $reviewYaml = Read-Skill "skills/controlflow-review/agents/openai.yaml"
 $readme = Read-Skill "README.md"
+$evidence = Read-Skill "skills/controlflow/references/evidence.md"
+$runtime = Read-Skill "docs/v4-runtime.md"
 
 # --- plan skill: compact durable contract ---
 Assert-Contains $plan 'after native `/plan`' 'plan positions after native /plan'
@@ -134,6 +136,38 @@ Assert-Contains $readme "evals" "README eval methodology"
 Assert-NotContains $readme "score-plan.ps1" "README runtime scorer reference"
 Assert-NotContains $readme "revision-request" "README revision loop reference"
 Assert-NotContains $readme "snapshot-context.ps1" "README snapshot command"
+
+# --- sensitivity guidance: make a decision, prove the regression, report limits ---
+# The behavioral baseline omitted a required assessment and old-defect control;
+# these assertions keep every skill entry linked to the shared evidence recipe.
+Assert-Contains $entry 'test sensitivity' 'entry surfaces test sensitivity'
+Assert-Contains $plan 'mutation_assessment' 'QA plan requires sensitivity decision'
+Assert-Contains $plan 'references/evidence.md#test-sensitivity' 'planner links sensitivity recipe'
+Assert-Contains $verify 'old defect' 'preflight requires regression negative control'
+Assert-Contains $verify 'references/evidence.md#test-sensitivity' 'verifier links sensitivity recipe'
+Assert-Contains $review 'old defect' 'review inspects regression negative control'
+Assert-Contains $review 'references/evidence.md#test-sensitivity' 'review links sensitivity recipe'
+foreach ($field in @('payload.mutation_assessment', 'decision', 'method', 'rationale',
+    'scope', 'criterion_refs', 'check_refs', 'budget', 'acceptance')) {
+    Assert-Contains $evidence $field "assessment field guidance: $field"
+}
+foreach ($choice in @('run', 'skip', 'unsupported', 'stryker', 'controlled', 'none',
+    'old defect', 'isolated copy', 'expected failing test', 'actual result',
+    'recurring bugs', 'financial', 'comparisons', 'human-only', 'light docs',
+    'historic', 'minimum_score > 0', 'measurement', 'semantic quality')) {
+    Assert-Contains $evidence $choice "sensitivity decision/limit: $choice"
+}
+Assert-Contains $runtime '"mutation_assessment"' 'runtime contains usable QA assessment example'
+Assert-Contains $runtime '"quality_profiles"' 'runtime contains linked profile example'
+Assert-Contains $runtime 'projectRoot' 'Stryker source root binding documented'
+Assert-Contains $runtime 'UTF-8' 'Stryker source encoding binding documented'
+Assert-Contains $runtime 'BOM' 'Stryker BOM normalization documented'
+foreach ($status in @('ERROR', 'FAIL', 'TIMEOUT', 'STALE', 'NOT_RUN', 'PASS',
+    'UNSUPPORTED', 'NOT_APPLICABLE')) {
+    Assert-Contains $runtime $status "quality profile status semantics: $status"
+}
+Assert-Contains $readme 'mutation_assessment' 'README introduces explicit sensitivity decision'
+Assert-Contains $readme 'old defect' 'README states regression negative control'
 
 Write-Output "VALID skill behavior contract"
 

@@ -198,6 +198,11 @@ their changes require a fresh check; a gate cannot infer them automatically.
 For example, a check whose behavior depends on an ignored local configuration can
 include `"inputs": ["config/local.json"]` in its contract.
 
+Stryker `report.scope` source files are automatic check inputs, including ignored
+files. Their hashes are captured before/after execution and checked again at the
+gate; do not duplicate them in `inputs`. Older mutation captures without these
+input receipts require recapture.
+
 Check timeouts cover command execution and output collection. On Unix, cleanup
 uses a dedicated process group; a process that deliberately leaves that group
 can escape observation and cleanup. Run only checks whose background processes
@@ -303,7 +308,18 @@ The runtime does not install scanners. Complexity/CRAP, SAST and DAST report
 adapters are currently unsupported. See [quality capabilities](docs/v4-runtime.md#quality-capabilities).
 
 Mutation testing measures whether tests detect controlled faults, not complete
-correctness. The plugin's own PowerShell gate/ledger tests have a separate,
+correctness. New code-judged QA plans record `mutation_assessment`: run a bounded
+Stryker or isolated controlled check, skip with a risk-based rationale, or record
+unsupported tooling honestly. Bugfix regressions must fail on the old defect and
+pass on the fix. Recurring defects, changed comparisons and critical financial,
+access or integrity rules deserve explicit sensitivity scrutiny; green tests
+alone cannot justify skipping. Required available mutation profiles need a
+positive project-chosen score threshold. Optional unthresholded reports remain
+measurements. Human-only plans and safe light docs keep their proportional path.
+See the [assessment recipe](skills/controlflow/references/evidence.md#test-sensitivity)
+and [QA example](docs/v4-runtime.md#qa-sensitivity-assessment).
+
+The plugin's own PowerShell gate/ledger tests have a separate,
 bounded source-specific mutation sensitivity pilot; this is not a universal
 PowerShell framework or Stryker support for PowerShell. CRAP is a risk indicator,
 not a universal threshold or a substitute for architectural review.
