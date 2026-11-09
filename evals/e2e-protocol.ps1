@@ -80,7 +80,13 @@ function New-E2EV4Treatment {
     $relative=[IO.Path]::GetRelativePath($FixtureRoot,$TrialDirectory)
     if($relative -eq '.' -or (-not [IO.Path]::IsPathRooted($relative) -and $relative -ne '..' -and -not $relative.StartsWith('..'+[IO.Path]::DirectorySeparatorChar))){throw 'E2E_TREATMENT_MUST_BE_EXTERNAL'}
     $inventory=@(Get-E2EV4CandidateInventory $PluginRoot);$digest=Get-E2EPluginDigest $inventory
-    $manifest=Get-Content -LiteralPath (Join-Path $PluginRoot 'plugin.json') -Raw|ConvertFrom-Json -AsHashtable
+    $manifestPath=Join-Path $PluginRoot 'plugin.json'
+    if([IO.Directory]::Exists($manifestPath)){throw 'E2E_V4_CANDIDATE_REQUIRED'}
+    if(-not [IO.File]::Exists($manifestPath)){
+        # NativeLegacy intentionally ships only the compatibility manifest.
+        $manifestPath=Join-Path $PluginRoot '.codex-plugin/plugin.json'
+    }
+    $manifest=Get-Content -LiteralPath $manifestPath -Raw|ConvertFrom-Json -AsHashtable
     if($manifest.version -cnotmatch '^4\.0\.0(?:-[A-Za-z0-9.-]+)?$'){throw 'E2E_V4_CANDIDATE_REQUIRED'}
     $module=Import-Module (Join-Path $PluginRoot 'scripts/ControlFlow.Core.psm1') -Force -PassThru -DisableNameChecking
     $baseline=(& (@(Get-Command git -CommandType Application -ErrorAction Stop)[0]).Source -c core.excludesFile= -C $FixtureRoot rev-parse HEAD) -join "`n"

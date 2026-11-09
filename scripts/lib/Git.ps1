@@ -61,7 +61,56 @@ function Test-CFGroupHasOtherProcess([int]$GroupId,[int]$RootId,[int]$MainId,[st
     }
     return $false
 }
-function Invoke-CFProcess([string]$Executable,[string[]]$Arguments,[string]$Directory,[hashtable]$Environment=@{},[double]$TimeoutSeconds=120,[bool]$OwnDescendants=$false) {
+function New-CFBinaryCapture([int]$Limit) {
+    if(-not ('CFBinaryCapture' -as [type])){
+        Add-Type -TypeDefinition @'
+using System;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+public sealed class CFBinaryCapture : IDisposable {
+ readonly int limit;
+ readonly object gate=new object();
+ byte[] buffer=Array.Empty<byte>();
+ int retained;
+ long observed;
+ volatile bool exceeded;
+ bool frozen;
+ public CFBinaryCapture(int limit){if(limit<=0)throw new ArgumentOutOfRangeException(nameof(limit));this.limit=limit;}
+ public bool LimitExceeded => exceeded;
+ public long ObservedBytes => Interlocked.Read(ref observed);
+ public async Task CopyFromAsync(Stream source){
+  byte[] scratch=new byte[81920];
+  int count;
+  while((count=await source.ReadAsync(scratch,0,scratch.Length).ConfigureAwait(false))!=0){
+   if(Interlocked.Add(ref observed,count)>limit) exceeded=true;
+   lock(gate){
+    if(frozen) continue;
+    int keep=Math.Min(count,limit-retained);
+    int needed=retained+keep;
+    if(needed>buffer.Length){
+     int capacity=(int)Math.Min(limit,Math.Max((long)needed,Math.Max(4096L,(long)buffer.Length*2)));
+     Array.Resize(ref buffer,capacity);
+    }
+    if(keep>0){Buffer.BlockCopy(scratch,0,buffer,retained,keep);retained=needed;}
+   }
+  }
+ }
+ public byte[] ToArray(){
+  lock(gate){
+   frozen=true;
+   byte[] result=new byte[retained];
+   Buffer.BlockCopy(buffer,0,result,0,retained);
+   return result;
+  }
+ }
+ public void Dispose(){lock(gate){frozen=true;buffer=Array.Empty<byte>();}}
+}
+'@
+    }
+    return [CFBinaryCapture]::new($Limit)
+}
+function Invoke-CFProcess([string]$Executable,[string[]]$Arguments,[string]$Directory,[hashtable]$Environment=@{},[double]$TimeoutSeconds=120,[bool]$OwnDescendants=$false,[ValidateRange(0,2147483647)][int]$OutputLimitBytes=0) {
     $info=[Diagnostics.ProcessStartInfo]::new();$info.FileName=$Executable;$info.WorkingDirectory=$Directory;$info.UseShellExecute=$false;$info.RedirectStandardOutput=$true;$info.RedirectStandardError=$true;$info.CreateNoWindow=$true
     $job=$null;$group=$false;$payload=$null;$signalPipe=$null;$signalTask=$null;$signalReader=$null;$signalRead=$null;$signaled=$false
     if($OwnDescendants -and $IsWindows){
@@ -162,7 +211,8 @@ $child.WaitForExit();$writer.WriteLine([string]$child.Id);$writer.Dispose();[voi
     else{foreach($arg in $Arguments){[void]$info.ArgumentList.Add($arg)}}
     foreach($key in $Environment.Keys){$info.Environment[$key]=[string]$Environment[$key]}
     $p=[Diagnostics.Process]::new();$p.StartInfo=$info
-    $stdout=[IO.MemoryStream]::new();$stderr=[IO.MemoryStream]::new()
+    $stdout=if($OutputLimitBytes){New-CFBinaryCapture $OutputLimitBytes}else{[IO.MemoryStream]::new()}
+    $stderr=if($OutputLimitBytes){New-CFBinaryCapture $OutputLimitBytes}else{[IO.MemoryStream]::new()}
     $callerExitCode=Get-Variable -Name LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue
     $savedExitCode=if($null -ne $callerExitCode){$callerExitCode.Value}else{$null}
     $started=$false;$cleanupAttempted=$false
@@ -174,9 +224,11 @@ $child.WaitForExit();$writer.WriteLine([string]$child.Id);$writer.Dispose();[voi
         # The wrapper's input belongs to the same deadline as execution and
         # stream collection: a stalled reader must not block WriteLine.
         $inputTask=if($null -ne $payload){$p.StandardInput.WriteLineAsync($payload)}else{$null}
-        $outTask=$p.StandardOutput.BaseStream.CopyToAsync($stdout);$errTask=$p.StandardError.BaseStream.CopyToAsync($stderr)
+        $outTask=if($OutputLimitBytes){$stdout.CopyFromAsync($p.StandardOutput.BaseStream)}else{$p.StandardOutput.BaseStream.CopyToAsync($stdout)}
+        $errTask=if($OutputLimitBytes){$stderr.CopyFromAsync($p.StandardError.BaseStream)}else{$p.StandardError.BaseStream.CopyToAsync($stderr)}
         $timedOut=$false;$processIncomplete=$false;$mainProcessId=0
         while(-not $p.HasExited -or -not $outTask.IsCompleted -or -not $errTask.IsCompleted -or ($null -ne $inputTask -and -not $inputTask.IsCompleted) -or ($signalPipe -and -not $signaled)){
+            if($OutputLimitBytes -and ($stdout.LimitExceeded -or $stderr.LimitExceeded)){break}
             if($signalTask -and $signalTask.IsCompleted -and -not $signalReader){
                 if($signalTask.IsFaulted){throw 'PROCESS_SIGNAL_UNVERIFIABLE'}
                 $signalReader=[IO.StreamReader]::new($signalPipe);$signalRead=$signalReader.ReadLineAsync()
@@ -231,8 +283,10 @@ $child.WaitForExit();$writer.WriteLine([string]$child.Id);$writer.Dispose();[voi
         }
         if(-not $cleanupOk){throw 'PROCESS_CLEANUP_UNVERIFIABLE'}
         if($null -ne $inputTask -and $inputTask.IsFaulted -and -not $timedOut){throw 'PROCESS_INPUT_DELIVERY_FAILED'}
-        if($outTask.IsFaulted -or $errTask.IsFaulted){throw 'PROCESS_OUTPUT_COLLECTION_FAILED'}
-        return @{exit_code=if($p.HasExited){$p.ExitCode}else{-1};stdout=$stdout.ToArray();stderr=$stderr.ToArray();timed_out=$timedOut;process_incomplete=$processIncomplete}
+        $outBytes=$stdout.ToArray();$errBytes=$stderr.ToArray()
+        $limitExceeded=$OutputLimitBytes -gt 0 -and ($stdout.LimitExceeded -or $stderr.LimitExceeded)
+        if(($outTask.IsFaulted -or $errTask.IsFaulted) -and -not $limitExceeded){throw 'PROCESS_OUTPUT_COLLECTION_FAILED'}
+        return @{exit_code=if($p.HasExited){$p.ExitCode}else{-1};stdout=$outBytes;stderr=$errBytes;timed_out=$timedOut;process_incomplete=$processIncomplete;output_limit_bytes=$OutputLimitBytes;output_limit_exceeded=$limitExceeded;stdout_observed_bytes=$(if($OutputLimitBytes){$stdout.ObservedBytes}else{$outBytes.Length});stderr_observed_bytes=$(if($OutputLimitBytes){$stderr.ObservedBytes}else{$errBytes.Length})}
     }finally{
         if($group -and $started -and -not $cleanupAttempted){
             $cleanupAttempted=$true;$emergencyOk=$false
@@ -251,9 +305,79 @@ $child.WaitForExit();$writer.WriteLine([string]$child.Id);$writer.Dispose();[voi
         if($signalReader){$signalReader.Dispose()}elseif($signalPipe){$signalPipe.Dispose()};if($job){$job.Dispose()};$p.Dispose();$stdout.Dispose();$stderr.Dispose()
     }
 }
+function Resolve-CFPhysicalPath([string]$Path) {
+    $full=Get-CFFullPath $Path
+    if(-not ('CFNativePaths' -as [type])){
+        Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Text;
+using Microsoft.Win32.SafeHandles;
+public static class CFNativePaths {
+ [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+ static extern SafeFileHandle CreateFileW(string path,uint access,uint share,IntPtr security,uint creation,uint flags,IntPtr template);
+ [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+ static extern uint GetFinalPathNameByHandleW(SafeFileHandle file,StringBuilder path,uint size,uint flags);
+ [DllImport("libc", SetLastError=true)] static extern IntPtr realpath([MarshalAs(UnmanagedType.LPUTF8Str)] string path,IntPtr buffer);
+ [DllImport("libc")] static extern void free(IntPtr memory);
+ public static string Resolve(string path) {
+  if(OperatingSystem.IsWindows()){
+   using(var file=CreateFileW(path,0,7,IntPtr.Zero,3,0x02000000,IntPtr.Zero)){
+    if(file.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error());
+    var buffer=new StringBuilder(32768);
+    uint length=GetFinalPathNameByHandleW(file,buffer,(uint)buffer.Capacity,0);
+    if(length==0) throw new Win32Exception(Marshal.GetLastWin32Error());
+    if(length>=buffer.Capacity) throw new InvalidOperationException("Canonical path exceeds supported length");
+    string value=buffer.ToString();
+    if(value.StartsWith(@"\\?\UNC\",StringComparison.OrdinalIgnoreCase)) return @"\\"+value.Substring(8);
+    return value.StartsWith(@"\\?\",StringComparison.Ordinal) ? value.Substring(4) : value;
+   }
+  }
+  IntPtr result=realpath(path,IntPtr.Zero);
+  if(result==IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error());
+  try{return Marshal.PtrToStringUTF8(result);}finally{free(result);}
+ }
+}
+'@
+    }
+    return [CFNativePaths]::Resolve($full)
+}
+function Resolve-CFGitExecutable([string]$Root) {
+    $logical=Get-CFFullPath $Root
+    $physical=Resolve-CFPhysicalPath $logical
+    $boundaries=[Collections.Generic.List[string]]::new()
+    foreach($start in @($logical,$physical)){
+        $cursor=$start
+        while($cursor){
+            $marker=[IO.Path]::Combine($cursor,'.git');$present=$false
+            try{[void][IO.File]::GetAttributes($marker);$present=$true}
+            catch [IO.FileNotFoundException] {}
+            catch [IO.DirectoryNotFoundException] {}
+            if($present){$boundaries.Add($cursor);$boundaries.Add((Resolve-CFPhysicalPath $cursor))}
+            $parent=[IO.Path]::GetDirectoryName($cursor);if($parent -eq $cursor){break};$cursor=$parent
+        }
+    }
+    if($boundaries.Count -eq 0){throw 'GIT_WORKTREE_BOUNDARY_REQUIRED'}
+    $command=@(Get-Command git -CommandType Application -ErrorAction Stop)[0]
+    $selected=Get-CFFullPath $command.Source
+    $resolved=Resolve-CFPhysicalPath $selected
+    $comparison=if($IsWindows){[StringComparison]::OrdinalIgnoreCase}else{[StringComparison]::Ordinal}
+    foreach($boundary in $boundaries){
+        $prefix=$boundary.TrimEnd([IO.Path]::DirectorySeparatorChar)+[IO.Path]::DirectorySeparatorChar
+        foreach($candidate in @($selected,$resolved)){
+            if($candidate.Equals($boundary,$comparison) -or $candidate.StartsWith($prefix,$comparison)){throw 'UNTRUSTED_GIT_EXECUTABLE'}
+        }
+    }
+    # An absolute physical path avoids Windows' implicit process-cwd lookup.
+    # Both spellings were checked: neither repo-local links nor external links
+    # into the worktree can supply Git. Filesystem replacement races remain native.
+    return $resolved
+}
 function Invoke-CFGit([string]$Root,[string[]]$Arguments,[hashtable]$Environment=@{}) {
     $Root=Get-CFFullPath $Root
-    $r=Invoke-CFProcess 'git' (@('-C',$Root)+$Arguments) $Root $Environment
+    $executable=Resolve-CFGitExecutable $Root
+    $r=Invoke-CFProcess $executable (@('-C',$Root)+$Arguments) $Root $Environment
     if($r.timed_out -or $r.exit_code -ne 0){throw "GIT_OBSERVATION_FAILED: $($Arguments[0]): $($script:Utf8.GetString($r.stderr))"}
     return ,$r.stdout
 }
@@ -266,6 +390,11 @@ function Get-CFNul([byte[]]$Bytes) {
 }
 function Get-CFMap { return ,[Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal) }
 function Get-CFSorted($Values) { $a=[string[]]@($Values);[Array]::Sort($a,[StringComparer]::Ordinal);return $a }
+function Get-CFUniqueSorted($Values) {
+    $set=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach($value in $Values){[void]$set.Add([string]$value)}
+    return Get-CFSorted $set
+}
 function Get-CFIdentity([string]$Root) {
     $rootFull=Get-CFFullPath $Root
     $top=Get-CFGitText $rootFull @('rev-parse','--path-format=absolute','--show-toplevel')

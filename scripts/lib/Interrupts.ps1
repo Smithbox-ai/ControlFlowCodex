@@ -77,6 +77,9 @@ function Resolve-CFActiveHeader([string]$RepoRoot,[string]$SessionId) {
     return $header
 }
 function Read-CFPendingInterrupt([string]$RunPath,$State) {
+    # A publisher may have observed ACTIVE just before terminal publication.
+    # Its late mailbox generation cannot reopen a closed V4 lifecycle.
+    if(Test-CFV4TerminalState $State){return $null}
     $path=[IO.Path]::Combine($RunPath,'pending-interrupt.json');Assert-CFNoLinks $path
     if(-not [IO.File]::Exists($path)){if([IO.Directory]::Exists($path)){throw 'INVALID_INTERRUPT_NOTIFICATION'};return $null}
     $text=Read-CFMutableText $path
@@ -92,6 +95,7 @@ function Request-ControlFlowInterrupt {
     $header=Resolve-CFActiveHeader $RepoRoot $SessionId
     if($null -eq $header){return $null}
     $state=$header.state;$runPath=$header.run_path
+    if(Test-CFV4TerminalState $state){return $null}
     # Never silently repair a corrupt notification or consult potentially huge
     # evidence outputs on the native three-second interrupt path.
     $existing=Read-CFPendingInterrupt $runPath $state

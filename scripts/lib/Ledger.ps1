@@ -29,6 +29,9 @@ function Publish-CFState([string]$RunPath,$State,$Evidence) {
     Move-CFMutableFile $tmp $target
 }
 function Get-CFActivePath([string]$RepoRoot,[string]$SessionId) { (Get-CFStorageContext $RepoRoot $SessionId).active_path }
+function Test-CFV4TerminalState($State) {
+    return $State.schema_version -ceq '4.0.0' -and ($State.status -cin @('COMPLETED','CANCELLED') -or ($State.ContainsKey('lifecycle_closed') -and $State.lifecycle_closed))
+}
 function Start-ControlFlowRun {
     param([Parameter(Mandatory)][string]$RepoRoot,[Parameter(Mandatory)][string]$ContractPath,[string]$SessionId,[switch]$ManualFallback)
     if(-not $SessionId -and -not $ManualFallback){throw 'TRUSTED_SESSION_REQUIRED'}
@@ -54,7 +57,7 @@ function Start-ControlFlowRun {
         Assert-CFNoLinks ($active+'.lock')
         $activeLock=[IO.File]::Open($active+'.lock',[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
         try {
-            if([IO.File]::Exists($active)) { $prior=Get-ControlFlowActiveRun $RepoRoot $SessionId;if($prior.state.status -notin @('COMPLETED','CANCELLED')){throw 'SESSION_ALREADY_ACTIVE'} }
+            if([IO.File]::Exists($active)) { $prior=Get-ControlFlowActiveRun $RepoRoot $SessionId;if($prior.state.status -notin @('COMPLETED','CANCELLED') -and -not (Test-CFV4TerminalState $prior.state)){throw 'SESSION_ALREADY_ACTIVE'} }
             $pointer=@{schema_version=$contract.schema_version;run_path=$runPath;run_id=$id;task_id=$contract.task_id;binding=$identity}
             $tmp=$active+'.'+[guid]::NewGuid().ToString('N')+'.tmp';Write-CFFlushed $tmp $script:Utf8.GetBytes(($pointer|ConvertTo-Json -Depth 20 -Compress))
             Move-CFMutableFile $tmp $active
@@ -71,9 +74,23 @@ function Read-ControlFlowRun {
     $initial=Read-CFReference $RunPath $state.initial_ref;$evidence=Read-CFReference $RunPath $state.evidence_ref
     foreach($check in $evidence.checks){Read-CFReference $RunPath $check.stdout_ref -Binary|Out-Null;Read-CFReference $RunPath $check.stderr_ref -Binary|Out-Null;if($check.ContainsKey('quality') -and $check.quality.ContainsKey('raw_report_ref')){Read-CFReference $RunPath $check.quality.raw_report_ref -Binary|Out-Null}}
     if($state.schema_version -ceq '4.0.0'){foreach($event in $evidence.events){if($event.type -ceq 'artifact'){Read-CFReference $RunPath $event.artifact_ref|Out-Null}}}
+    if($state.schema_version -ceq '4.0.0' -and -not (Test-CFV4TerminalState $state)){
+        # Older V4 publishers could collapse case-distinct wait targets. Their
+        # immutable review events still retain each unresolved human decision.
+        $latestHuman=Get-CFMap
+        foreach($event in $evidence.events){
+            if($event.type -ceq 'phase_review' -and $event.judge -ceq 'human' -and $event.planning_epoch_id -eq $state.planning_epoch_id){$latestHuman[$event.target_id]=$event}
+        }
+        $unresolved=@($latestHuman.Values|Where-Object {$_.verdict -cne 'APPROVED'})
+        $state.human_wait_targets=@(Get-CFUniqueSorted (@($state.human_wait_targets)+@($unresolved|ForEach-Object {$_.target_id})))
+        if($unresolved.Count -gt 0 -and $state.status -ceq 'ACTIVE'){
+            $state.status='HUMAN_WAIT';$state.structured_reason=@{reason='HUMAN_WAIT';evidence=$unresolved[0].receipt_id}
+            if(-not $state.stop_source_digest){$state.stop_source_digest=(Read-CFReference $RunPath $unresolved[0].artifact_ref).source_digest}
+        }
+    }
     $pending=Read-CFPendingInterrupt $RunPath $state
     $ack=if($state.ContainsKey('acknowledged_interrupt_id')){$state.acknowledged_interrupt_id}else{$null}
-    if($null -ne $pending -and $pending.interrupt_id -cne $ack){
+    if($null -ne $pending -and $pending.interrupt_id -cne $ack -and -not (Test-CFV4TerminalState $state)){
         if($state.schema_version -ceq '4.0.0' -and -not $state.stop_source_digest){$state.stop_source_digest=$pending.observed_source_digest}
         $state.status='INTERRUPTED'
         $state.structured_reason=@{reason='INTERRUPT';evidence='NATIVE_PENDING_INTERRUPT';interrupt_id=$pending.interrupt_id;native_evidence=$pending.native_evidence}
@@ -88,8 +105,8 @@ function Get-ControlFlowActiveRun {
 }
 function Get-CFRunSource([string]$RepoRoot,[string]$RunPath,$State) { Get-ControlFlowSourceDigest $RepoRoot $State.baseline_commit $RunPath $State.binding.session_id }
 function Get-CFQABindings($Contract,$Artifact) {
-    $criterionIds=@($Artifact.payload.scenarios|ForEach-Object {$_.criterion_refs}|Sort-Object -Unique)
-    $checkIds=@($Artifact.payload.scenarios|ForEach-Object {$_.check_refs}|Sort-Object -Unique)
+    $criterionIds=@(Get-CFUniqueSorted @($Artifact.payload.scenarios|ForEach-Object {$_.criterion_refs}))
+    $checkIds=@(Get-CFUniqueSorted @($Artifact.payload.scenarios|ForEach-Object {$_.check_refs}))
     $criteria=@(foreach($id in $criterionIds){$defs=@($Contract.criteria|Where-Object {$_.id -ceq $id});if($defs.Count -ne 1){throw 'INVALID_QA_CRITERION'};[ordered]@{id=$id;sha256=(Get-CFJsonHash $defs[0])}})
     $checks=@(foreach($id in $checkIds){$defs=@($Contract.checks|Where-Object {$_.id -ceq $id});if($defs.Count -ne 1){throw 'INVALID_QA_CHECK'};[ordered]@{id=$id;sha256=(Get-CFJsonHash $defs[0])}})
     return [ordered]@{criteria=$criteria;checks=$checks}
@@ -260,7 +277,7 @@ function Update-CFV4Event([string]$RepoRoot,[string]$RunPath,$Read,$Event,$Copy)
                 $s.corrections.total++;$s.corrections.targets[$key]++
                 if($Event.judge -ceq 'human'){
                     if(-not $s.stop_source_digest){$s.stop_source_digest=$source.digest}
-                    $s.human_wait_targets=@(@($s.human_wait_targets)+@($Event.target_id)|Sort-Object -Unique)
+                    $s.human_wait_targets=@(Get-CFUniqueSorted (@($s.human_wait_targets)+@($Event.target_id)))
                     $s.status='HUMAN_WAIT';$s.structured_reason=@{reason='HUMAN_WAIT';evidence=$Copy.receipt_id}
                 }
                 if($s.corrections.total -ge 6 -or $s.corrections.targets[$key] -ge 3){$s.status='BLOCKED';$s.structured_reason=@{reason='BLOCKED';evidence='CORRECTION_LIMIT'}}
@@ -287,7 +304,7 @@ function Update-CFV4Event([string]$RepoRoot,[string]$RunPath,$Read,$Event,$Copy)
                 if([string]::IsNullOrWhiteSpace([string]$Event.user_decision_ref)){throw 'EXPLICIT_USER_DECISION_REQUIRED'}
                 if(-not $s.preflight_digest){throw 'REPLAN_REQUIRES_AUTHORIZED_PREFLIGHT'}
                 $previous=@($Read.evidence.events|Where-Object {$_.type -ceq 'preflight' -and $_.planning_epoch_id -eq $s.planning_epoch_id})[-1]
-                $old=Get-CFEntriesMap $Read.initial_snapshot.source.entries;$now=Get-CFEntriesMap $source.entries;$paths=@($old.Keys)+@($now.Keys)|Sort-Object -Unique
+                $old=Get-CFEntriesMap $Read.initial_snapshot.source.entries;$now=Get-CFEntriesMap $source.entries;$paths=@(Get-CFUniqueSorted (@($old.Keys)+@($now.Keys)))
                 foreach($path in $paths){$a=if($old.ContainsKey($path)){$old[$path]}else{$null};$b=if($now.ContainsKey($path)){$now[$path]}else{$null};if((Get-CFEntryIdentity $a) -cne (Get-CFEntryIdentity $b) -and -not (Test-ControlFlowScope $path $previous.authorized_scope)){throw 'UNAUTHORIZED_CARRIED_WORK'}}
                 Assert-CFForeignPreserved $RepoRoot $RunPath $Read
                 # The original initial_ref is never replaced. Only previously authorized
@@ -356,18 +373,55 @@ function Assert-CFMutationReportScope($Report,[string]$RepoRoot,[string[]]$Scope
     foreach($path in $Scope){if(-not $observed.Contains($path)){throw "MUTATION_REPORT_SCOPE_MISSING:$path"}}
     return @($Scope)
 }
+function Read-CFQualityReportSnapshot([string]$Path) {
+    $snapshot=@{exists=$false;bytes=[byte[]]@();length=$null;observed_bytes=0L;stamp=$null;error=$null}
+    $stream=$null;$memory=$null
+    try{
+        $Path=Get-CFFullPath $Path;Assert-CFNoLinks $Path
+        try{$stream=[IO.File]::Open($Path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)}
+        catch [IO.FileNotFoundException]{return $snapshot}
+        catch [IO.DirectoryNotFoundException]{return $snapshot}
+        $snapshot.exists=$true;$snapshot.length=$stream.Length
+        $snapshot.stamp=[IO.File]::GetLastWriteTimeUtc($stream.SafeFileHandle).Ticks
+        if($snapshot.length -gt 33554432){$snapshot.error='REPORT_TOO_LARGE';return $snapshot}
+        $memory=[IO.MemoryStream]::new();$buffer=[byte[]]::new(81920)
+        while($snapshot.observed_bytes -le 33554432){
+            $n=$stream.Read($buffer,0,[int][Math]::Min($buffer.Length,33554433-$snapshot.observed_bytes))
+            if($n -eq 0){break}
+            $snapshot.observed_bytes+=$n
+            if($snapshot.observed_bytes -gt 33554432){$snapshot.error='REPORT_TOO_LARGE';return $snapshot}
+            # Avoid MemoryStream's geometric growth allocating beyond the limit.
+            $needed=[int]$memory.Length+$n
+            if($memory.Capacity -lt $needed){$memory.Capacity=[int][Math]::Min(33554432,[Math]::Max($needed,[Math]::Max(4096,[long]$memory.Capacity*2)))}
+            $memory.Write($buffer,0,$n)
+        }
+        $snapshot.bytes=$memory.ToArray()
+    }catch{$snapshot.error=$_.Exception.Message}
+    finally{if($stream){$stream.Dispose()};if($memory){$memory.Dispose()}}
+    return $snapshot
+}
 function Read-ControlFlowQualityReport {
     param([string]$Path,[string]$Format,[ValidateRange(1,2147483647)][int]$MinimumTests=1,[Nullable[double]]$MinimumScore,[string]$RepoRoot,[string[]]$Scope,[string]$WorkingDirectory='.')
+    if($null -ne $MinimumScore -and ($MinimumScore -lt 0 -or $MinimumScore -gt 100 -or [double]::IsNaN($MinimumScore))){throw 'INVALID_MINIMUM_SCORE'}
+    if($Format -cnotin @('junit','nunit3','stryker-json')){return Read-CFQualityReportBytes -Bytes @() -Format $Format}
+    $snapshot=Read-CFQualityReportSnapshot $Path
+    $quality=Read-CFQualityReportBytes -Bytes $snapshot.bytes -Format $Format -MinimumTests $MinimumTests -MinimumScore $MinimumScore -RepoRoot $RepoRoot -Scope $Scope -WorkingDirectory $WorkingDirectory
+    if($snapshot.error){$quality.status='ERROR';$quality.error=$snapshot.error}
+    elseif(-not $snapshot.exists){$quality.status='NOT_RUN';$quality.Remove('error')}
+    return $quality
+}
+function Read-CFQualityReportBytes {
+    param([byte[]]$Bytes,[string]$Format,[ValidateRange(1,2147483647)][int]$MinimumTests=1,[Nullable[double]]$MinimumScore,[string]$RepoRoot,[string[]]$Scope,[string]$WorkingDirectory='.')
     if($null -ne $MinimumScore -and ($MinimumScore -lt 0 -or $MinimumScore -gt 100 -or [double]::IsNaN($MinimumScore))){throw 'INVALID_MINIMUM_SCORE'}
     $q=@{status='ERROR';format=$Format;executed_tests=$null;assertion_count=$null;mutation_score=$null;counts=@{};limitations=@()}
     if($Format -cnotin @('junit','nunit3','stryker-json')){$q.status='UNSUPPORTED';return $q}
     try{
-        $Path=Get-CFFullPath $Path
-        Assert-CFNoLinks $Path
-        $file=[IO.FileInfo]::new($Path);if(-not $file.Exists){$q.status='NOT_RUN';return $q};if($file.Length -gt 33554432){throw 'REPORT_TOO_LARGE'}
+        if($Bytes.Length -gt 33554432){throw 'REPORT_TOO_LARGE'}
         if($Format -ceq 'stryker-json'){
             $q.scope_verified=$false;$q.acceptance_status='NOT_EVALUATED';$q.minimum_score=$MinimumScore
-            $report=ConvertFrom-Json -InputObject ([IO.File]::ReadAllText($Path,$script:Utf8)) -AsHashtable -Depth 80
+            $memory=[IO.MemoryStream]::new($Bytes,$false);$textReader=[IO.StreamReader]::new($memory,$script:Utf8,$true)
+            try{$text=$textReader.ReadToEnd()}finally{$textReader.Dispose();$memory.Dispose()}
+            $report=ConvertFrom-Json -InputObject $text -AsHashtable -Depth 80
             if($report -isnot [Collections.IDictionary] -or -not $report.ContainsKey('schemaVersion') -or -not $report.ContainsKey('files') -or $report.files -isnot [Collections.IDictionary]){throw 'INVALID_MUTATION_REPORT'}
             if($RepoRoot){
                 $q.verified_scope=@(Assert-CFMutationReportScope $report $RepoRoot $Scope $WorkingDirectory)
@@ -396,8 +450,8 @@ function Read-ControlFlowQualityReport {
             return $q
         }
         $settings=[Xml.XmlReaderSettings]::new();$settings.DtdProcessing=[Xml.DtdProcessing]::Prohibit;$settings.XmlResolver=$null
-        $reader=[Xml.XmlReader]::Create($Path,$settings)
-        try{$doc=[Xml.XmlDocument]::new();$doc.XmlResolver=$null;$doc.Load($reader)}finally{$reader.Dispose()}
+        $memory=[IO.MemoryStream]::new($Bytes,$false);$reader=$null
+        try{$reader=[Xml.XmlReader]::Create($memory,$settings);$doc=[Xml.XmlDocument]::new();$doc.XmlResolver=$null;$doc.Load($reader)}finally{if($reader){$reader.Dispose()};$memory.Dispose()}
         $root=$doc.DocumentElement
         function CountAttr($Node,[string]$Name){$n=0;if(-not [int]::TryParse($Node.GetAttribute($Name),[ref]$n) -or $n -lt 0){throw 'INVALID_REPORT_COUNT'};return $n}
         if($Format -ceq 'junit'){
@@ -481,7 +535,7 @@ function Update-ControlFlowRun {
         if($null -ne $ExpectedRevision -and $s.revision -ne $ExpectedRevision){throw 'REVISION_CONFLICT'}
         $eventCopy=$Event|ConvertTo-Json -Depth 40|ConvertFrom-Json -AsHashtable
         $eventCopy.recorded_at=[DateTime]::UtcNow.ToString('o')
-        if($s.schema_version -ceq '4.0.0' -and (($s.ContainsKey('lifecycle_closed') -and $s.lifecycle_closed) -or $s.status -in @('COMPLETED','CANCELLED')) -and -not ($s.status -ceq 'COMPLETED' -and $Event.type -ceq 'stop' -and $Event.reason -ceq 'BLOCKED')){throw 'TERMINAL_RUN_IMMUTABLE'}
+        if((Test-CFV4TerminalState $s) -and -not ($s.status -ceq 'COMPLETED' -and $Event.type -ceq 'stop' -and $Event.reason -ceq 'BLOCKED')){throw 'TERMINAL_RUN_IMMUTABLE'}
         if($s.schema_version -ceq '4.0.0'){Update-CFV4Event $RepoRoot $RunPath $read $Event $eventCopy}
         switch -CaseSensitive ($Event.type) {
             {$_ -in @('artifact','phase_review')} {if($s.schema_version -cne '4.0.0'){throw 'UNSUPPORTED_EVENT'}}
@@ -556,22 +610,30 @@ function Capture-ControlFlowCheck {
         $reportPath=$null;$reportStamp=$null;if($check.ContainsKey('report')){$reportPath=Get-CFCheckReportPath $RepoRoot $check;if([IO.File]::Exists($reportPath)){$reportStamp=[IO.File]::GetLastWriteTimeUtc($reportPath).Ticks}}
         $timeout=if($check.ContainsKey('timeout_seconds')){[int]$check.timeout_seconds}else{120}
         $command='& { '+$check.command+"`n"+' }; if (-not $?) { exit 1 }; if ($null -ne $LASTEXITCODE) { exit $LASTEXITCODE }'
-        $result=Invoke-CFProcess (Join-Path $PSHOME $(if($IsWindows){'pwsh.exe'}else{'pwsh'})) @('-NoProfile','-NonInteractive','-Command',$command) $cwd @{} $timeout $true
+        $outputLimit=if($state.schema_version -ceq '4.0.0'){33554432}else{0}
+        $result=Invoke-CFProcess (Join-Path $PSHOME $(if($IsWindows){'pwsh.exe'}else{'pwsh'})) @('-NoProfile','-NonInteractive','-Command',$command) $cwd @{} $timeout $true -OutputLimitBytes $outputLimit
         $after=Get-CFRunSource $RepoRoot $RunPath $state;$afterContract=Read-ControlFlowContract $state.contract_path
         $inputAfter=if(Test-CFCheckHasInputs $check){Get-CFCheckInputDigest $RepoRoot $check}else{$null}
-        $status=if($result.timed_out){'TIMEOUT'}elseif($result.process_incomplete){'FAIL'}elseif($before.digest -cne $after.digest -or $c.digest -cne $afterContract.digest -or $inputBefore -cne $inputAfter){'STALE'}elseif($result.exit_code -ne 0){'FAIL'}else{'PASS'}
+        $status=if($result.output_limit_exceeded){'FAIL'}elseif($result.timed_out){'TIMEOUT'}elseif($result.process_incomplete){'FAIL'}elseif($before.digest -cne $after.digest -or $c.digest -cne $afterContract.digest -or $inputBefore -cne $inputAfter){'STALE'}elseif($result.exit_code -ne 0){'FAIL'}else{'PASS'}
         $capture=@{capture_id=[guid]::NewGuid().ToString('N');check_id=$CheckId;status=$status;exit_code=$result.exit_code;timed_out=$result.timed_out;command=$check.command;working_directory=$check.working_directory;command_digest=(Get-CFJsonHash $check);contract_digest=$c.digest;source_before=$before.digest;source_after=$after.digest;recorded_at=[DateTime]::UtcNow.ToString('o');stdout_ref=(Write-CFImmutable $RunPath 'output' $result.stdout 'stdout.bin');stderr_ref=(Write-CFImmutable $RunPath 'output' $result.stderr 'stderr.bin')}
         $capture.process_incomplete=$result.process_incomplete
+        if($state.schema_version -ceq '4.0.0'){
+            foreach($key in @('output_limit_bytes','output_limit_exceeded','stdout_observed_bytes','stderr_observed_bytes')){$capture[$key]=$result[$key]}
+            if($result.output_limit_exceeded){$capture.error='OUTPUT_LIMIT_EXCEEDED'}
+        }
         if($state.schema_version -ceq '4.0.0'){$state.last_observed_source_digest=$after.digest}
         if($check.ContainsKey('report')){
             $min=if($check.report.ContainsKey('minimum_tests')){[int]$check.report.minimum_tests}else{1}
             $score=if($check.report.ContainsKey('minimum_score')){[double]$check.report.minimum_score}else{$null}
-            $quality=Read-ControlFlowQualityReport -Path $reportPath -Format $check.report.format -MinimumTests $min -MinimumScore $score -RepoRoot $RepoRoot -Scope $check.report.scope -WorkingDirectory $check.working_directory
+            $snapshot=Read-CFQualityReportSnapshot $reportPath
+            $quality=Read-CFQualityReportBytes -Bytes $snapshot.bytes -Format $check.report.format -MinimumTests $min -MinimumScore $score -RepoRoot $RepoRoot -Scope $check.report.scope -WorkingDirectory $check.working_directory
+            if($snapshot.error){$quality.status='ERROR';$quality.error=$snapshot.error}
+            elseif(-not $snapshot.exists){$quality.status='NOT_RUN';$quality.Remove('error')}
+            $quality.report_bytes=$snapshot.length
             foreach($key in @('tool','version','scope','config','baseline','exclusions')){$quality[$key]=$check.report[$key]}
-            if([IO.File]::Exists($reportPath)){
-                Assert-CFNoLinks $reportPath
-                $quality.raw_report_ref=Write-CFImmutable $RunPath 'output' ([IO.File]::ReadAllBytes($reportPath)) 'stdout.bin'
-                if($null -ne $reportStamp -and [IO.File]::GetLastWriteTimeUtc($reportPath).Ticks -le $reportStamp){$quality.status='NOT_RUN';$quality.error='REPORT_NOT_REWRITTEN'}
+            if($snapshot.exists -and -not $snapshot.error){
+                $quality.raw_report_ref=Write-CFImmutable $RunPath 'output' $snapshot.bytes 'stdout.bin'
+                if($null -ne $reportStamp -and $snapshot.stamp -le $reportStamp){$quality.status='NOT_RUN';$quality.error='REPORT_NOT_REWRITTEN'}
             }
             $capture.quality=$quality
             if($capture.status -ceq 'PASS' -and $quality.status -cne 'PASS'){$capture.status='FAIL'}

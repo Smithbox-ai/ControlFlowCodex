@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Preserve V4 terminal lifecycle across late interrupts, recover case-distinct
+  human waits and bind all ordinal QA/check identities without collapsing case.
+- Resolve trusted Git outside the worktree before execution and reject stale V4
+  completion observations after concurrent ledger publication.
+- Cap V4 stdout/stderr independently at 32 MiB and parse/archive the same bounded
+  report snapshot; preserve legacy defaults and XML/JSON encoding behavior.
+- Run portable CLI checks without repository-only workflows, prepare NativeLegacy
+  candidates from their compatibility manifest, and run Pester suites once.
+
 - Recheck source and contract before completion and state publication, reject
   reserved V4 design-review IDs, and automatically hash mutation scope inputs.
 - Resolve relative filesystem paths against PowerShell location; preserve path

@@ -34,8 +34,11 @@ try{
   $capture=Invoke-E2EProcess -Executable $pwsh -WorkingDirectory $temp -TimeoutSeconds 20 -Arguments (@('-NoProfile','-File',$runner,'-RepoRoot',$AdapterRoot,'-Execute')+$retired)
   Check ($capture.exit_code -ne 0) 'RetiredTreatmentCollectorAndSessionParameterRejected'
  }
- $workflow=[IO.File]::ReadAllText((Join-Path $AdapterRoot '.github/workflows/eval.yml'))
- Check ($workflow -notmatch 'npm install|OPENAI_API_KEY|codex login|\.codex/sessions|prepare-e2e-cache' -and $workflow -match 'Collector stdout-jsonl -Execute') 'WorkflowBlocksBeforeInstallationAuthenticationHistoryAndCache'
+ $workflowPath=Join-Path $AdapterRoot '.github/workflows/eval.yml'
+ if(Test-Path -LiteralPath $workflowPath -PathType Leaf){
+  $workflow=[IO.File]::ReadAllText($workflowPath)
+  Check ($workflow -notmatch 'npm install|OPENAI_API_KEY|codex login|\.codex/sessions|prepare-e2e-cache' -and $workflow -match 'Collector stdout-jsonl -Execute') 'WorkflowBlocksBeforeInstallationAuthenticationHistoryAndCache'
+ }else{Write-Output 'SKIP workflow-only assertion: workflow files are not in the portable package'}
  $native=@{schema_version='2.0.0';variant='native';case_id='fixture';tier='SMALL';trial=1;provenance=@{}}
  $v4=@{schema_version='2.0.0';variant='v4';case_id='fixture';tier='SMALL';trial=1;provenance=@{}}
  foreach($arm in @('native','v4')){Write-E2EText (Join-Path $temp "$arm/summary.json") (@{results=@($(if($arm -ceq 'native'){$native}else{$v4}))}|ConvertTo-Json -Depth 15)}

@@ -53,6 +53,12 @@ concurrent stale writes; unreferenced crash leftovers are not published evidence
 
 ## V4 report limits
 
+V4 stdout/stderr are capped independently at 32 MiB per check. Overflow is a
+failed capture with `OUTPUT_LIMIT_EXCEEDED`, bounded prefixes and observed byte
+counts; truncated output is never PASS. V3 and Git output defaults are unchanged.
+Reports use one bounded 32 MiB snapshot for parsing and raw evidence; oversized
+reports are rejected without copying their entire contents into the ledger.
+
 Known formats: single-suite JUnit, NUnit 3 and Stryker JSON. Unknown stdout is
 not proof of nonzero assertions. Captures retain tool/version, scope, config,
 baseline, exclusions, raw report/hash and status. JUnit counts cases, not

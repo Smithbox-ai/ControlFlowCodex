@@ -1,6 +1,7 @@
 # V4 runtime interfaces
 
-Package candidate 4.0.0-rc.2 uses contract/runtime 4.0.0 for every new run.
+New runs use contract/runtime 4.0.0. The package candidate version is recorded
+in the package manifests; it is independent of the runtime schema version.
 Requires PowerShell 7.4 or newer; recorded validation uses 7.6.9. A minimum
 version declaration is not evidence of executing the platform matrix on 7.4.
 Public run creation rejects V3 before storage initialization. Existing V3 runs
@@ -9,6 +10,17 @@ Their strict schema is `schemas/compat/plan-meta-v3.schema.json`, used only for
 existing runs, read-only validation and migration. Unknown versions fail closed.
 No daemon, workflow DSL, new mandatory dependency or plugin agent is added.
 Local receipts provide integrity/provenance, not authentication.
+
+## Git executable boundary
+
+Core Git observations resolve an application to an absolute physical executable
+before the first Git invocation. Filesystem ancestor `.git` markers (directory
+or linked-worktree file) establish logical and physical worktree boundaries.
+Both the selected spelling and physical destination must remain outside them,
+including intermediate links and Windows short-path aliases. A missing boundary
+fails closed; environment-only bare/worktree discovery is not supported.
+This avoids Windows process-current-directory executable lookup without changing
+the process cwd. It does not lock executable files against concurrent replacement.
 
 ## Routing
 
@@ -63,6 +75,10 @@ Later raw-byte contract changes conservatively stale promoted evidence.
 QA snapshots also retain runtime-generated hashes of referenced criterion/check
 definitions. Promotion rechecks those exact definitions, including command,
 working directory and mappings; changed definitions stale QA and implementation.
+IDs and carried paths use ordinal case-sensitive uniqueness. Historical V4 QA
+with collapsed case-distinct bindings becomes stale; no receipts are rewritten.
+Unresolved human targets are also recovered from current-epoch review events
+when an older V4 publisher collapsed its mutable wait set.
 
 Record decisions with `phase_review`: artifact_ref, target_id, judge human|agent,
 verdict APPROVED|REJECTED|UNKNOWN, assurance manual|verified, user_decision_ref.
@@ -104,12 +120,44 @@ Three rejected corrections for one target or six total block automatic repair.
 Explicit planning re-entry records and resets correction history; it grants no
 new approval. Completion is
 terminal; a stale completed result can become BLOCKED without reopening edits.
+For V4, late Interrupt notifications cannot reopen COMPLETED, CANCELLED or a
+`lifecycle_closed` run. A closed BLOCKED run can relinquish its session to a new
+run. A notification observed before completion's final mailbox check still
+rejects completion; a later generation cannot change the durable terminal state.
+Historical V3 notification/resume behavior remains unchanged.
 
 Completion rechecks source, raw contract and required check-input digests before
 returning PASS and again before publishing COMPLETED. The gate retains its
 `input_digests` observation, including QA-referenced checks. A detected concurrent
-change or newly pending interrupt rejects completion. These checks do not lock
+change or newly pending interrupt rejects completion. V4 completion also rechecks
+the observed state revision and evidence reference; concurrent ledger publication
+returns `LEDGER_CHANGED_DURING_GATE`. Results retain `observed_revision` and
+`observed_evidence_ref`. This read-only check does not acquire a nested writer lock.
+These checks do not lock
 external editors or guarantee unchanged files after the operation returns.
+
+## Capture byte limits
+
+V4 checks retain at most 33,554,432 bytes (32 MiB) independently for stdout and
+stderr. Exactly the limit is accepted. An extra byte stops the owned process tree
+and records capture `FAIL`, `error: OUTPUT_LIMIT_EXCEEDED`, the bounded prefixes,
+`output_limit_bytes`, `output_limit_exceeded`, and each stream's observed byte
+count. Observed counts are lower bounds, not total output after termination.
+Limit failure takes precedence over timeout/staleness diagnostics; those facts
+remain visible. Truncated output cannot support a successful check.
+
+Legacy V3 checks and ordinary Git observations retain their previous output
+defaults. The byte budget bounds collected buffers, not total RSS, source hashing,
+XML/JSON object graphs or historical evidence reads. Process groups/jobs remain
+cleanup mechanisms rather than a sandbox.
+
+Reports retain the existing 32 MiB limit. One bounded, opened-file snapshot supplies
+both the parser and raw receipt, including its handle-derived timestamp. A path
+replacement cannot make parsed metrics describe different archived bytes.
+Oversized reports record quality `ERROR / REPORT_TOO_LARGE` and capture failure
+without archiving the entire report. XML encoding detection and DTD prohibition,
+JSON BOM handling, scope checks and acceptance thresholds remain unchanged.
+`Read-ControlFlowQualityReport -Path` remains supported.
 
 ## Quality capabilities
 

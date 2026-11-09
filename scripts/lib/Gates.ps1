@@ -160,6 +160,7 @@ function Test-ControlFlowGate {
     try {
         if($Kind -eq 'Commit'){$lock=Open-CFWriter $RunPath $RepoRoot}
         $read=Read-ControlFlowRun $RepoRoot $RunPath;$s=$read.state;$e=$read.evidence;$initial=$read.initial_snapshot
+        $result.observed_revision=$s.revision;$result.observed_evidence_ref=$s.evidence_ref
         $RepoRoot=$s.binding.worktree_realpath
         $result.run_id=$s.run_id;$result.legacy_semantics=($s.schema_version -ceq '3.0.0')
         $c=Read-ControlFlowContract $s.contract_path;$contract=$c.contract;$result.contract_hash=$c.digest;$result.schema_version=$s.schema_version
@@ -272,6 +273,10 @@ function Test-ControlFlowGate {
             $pending=Read-CFPendingInterrupt $RunPath $s
             $ack=if($s.ContainsKey('acknowledged_interrupt_id')){$s.acknowledged_interrupt_id}else{$null}
             if($null -ne $pending -and $pending.interrupt_id -cne $ack){$reasons.Add('INTERRUPT_PENDING')}
+            if($s.schema_version -ceq '4.0.0'){
+                $finalState=(Read-CFRunHeader $RepoRoot $RunPath $s.binding.session_id).state
+                if($finalState.revision -ne $s.revision -or $finalState.evidence_ref.path -cne $s.evidence_ref.path -or $finalState.evidence_ref.sha256 -cne $s.evidence_ref.sha256){$reasons.Add('LEDGER_CHANGED_DURING_GATE')}
+            }
         }
         $result.input_digests=$inputDigests
         $result.reasons=@($reasons);$result.status=if($reasons.Count -eq 0){'PASS'}else{'FAIL'}

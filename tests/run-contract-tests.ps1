@@ -6,6 +6,45 @@ $ErrorActionPreference = "Stop"
 
 $testRoot = $PSScriptRoot
 
+if ($UsePester) {
+    $invokePester = Get-Command Invoke-Pester -ErrorAction SilentlyContinue
+    if ($null -eq $invokePester) {
+        throw "Pester is required when -UsePester is specified"
+    }
+
+    # The original Pester wrapper invokes this runner without -UsePester.
+    # Select that route before running any suite, so it executes exactly once.
+    $pesterTestPath = Join-Path $testRoot "controlflow-contract.Tests.ps1"
+    if ($invokePester.Parameters.ContainsKey('Configuration')) {
+        # This wrapper needs no registry fixture. Disabling TestRegistry keeps
+        # Pester 5 usable under the same read-only registry policy as plain tests.
+        $pesterResult = Invoke-Pester -Configuration @{
+            Run = @{ Path = $pesterTestPath; PassThru = $true }
+            TestRegistry = @{ Enabled = $false }
+        }
+    } else {
+        $pesterResult = Invoke-Pester -Path $pesterTestPath -PassThru
+    }
+    $pesterFailed = $false
+    if ($null -ne $pesterResult.PSObject.Properties["Result"]) {
+        $pesterFailed = ($pesterResult.Result -ne "Passed")
+    } elseif ($null -ne $pesterResult.PSObject.Properties["FailedCount"]) {
+        $pesterFailed = ($pesterResult.FailedCount -ne 0)
+    }
+    if ($pesterFailed) {
+        throw "Pester contract tests failed"
+    }
+    Write-Output "VALID ControlFlow contract suite"
+    return
+}
+
+function Write-ContractProgress([string]$Message) {
+    [Console]::Out.WriteLine($Message)
+    if (-not [string]::IsNullOrWhiteSpace($env:CONTROLFLOW_TEST_PROGRESS_PATH)) {
+        [IO.File]::AppendAllText($env:CONTROLFLOW_TEST_PROGRESS_PATH, $Message + [Environment]::NewLine)
+    }
+}
+
 function Invoke-ContractScript([string]$Name) {
     $path = Join-Path $testRoot $Name
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
@@ -13,7 +52,7 @@ function Invoke-ContractScript([string]$Name) {
     }
 
     $suiteClock = if ($env:CONTROLFLOW_TEST_PROGRESS -ceq '1') { [Diagnostics.Stopwatch]::StartNew() } else { $null }
-    if ($suiteClock) { [Console]::Out.WriteLine(("SUITE_START {0} {1:o}" -f $Name,[datetime]::UtcNow)) }
+    if ($suiteClock) { Write-ContractProgress ("SUITE_START {0} {1:o}" -f $Name,[datetime]::UtcNow) }
     $global:LASTEXITCODE = 0
     $output = @(& $path 2>&1)
     foreach ($line in $output) {
@@ -22,7 +61,7 @@ function Invoke-ContractScript([string]$Name) {
     if ($LASTEXITCODE -ne 0) {
         throw "Contract test failed: $Name"
     }
-    if ($suiteClock) { [Console]::Out.WriteLine(("SUITE_PASS {0} elapsed_ms={1} {2:o}" -f $Name,$suiteClock.ElapsedMilliseconds,[datetime]::UtcNow)) }
+    if ($suiteClock) { Write-ContractProgress ("SUITE_PASS {0} elapsed_ms={1} {2:o}" -f $Name,$suiteClock.ElapsedMilliseconds,[datetime]::UtcNow) }
 }
 
 Invoke-ContractScript "controlflow-skill-contract.tests.ps1"
@@ -71,30 +110,11 @@ Invoke-ContractScript "e2e-review-metrics.tests.ps1"
 Invoke-ContractScript "e2e-v4-adapter.tests.ps1"
 Invoke-ContractScript "e2e-v4-cli.tests.ps1"
 Invoke-ContractScript "e2e-release-grading.tests.ps1"
+Invoke-ContractScript "audit-runtime.tests.ps1"
+Invoke-ContractScript "capture-limits-v4.tests.ps1"
+Invoke-ContractScript "portable-runner.tests.ps1"
+Invoke-ContractScript "audit-sensitivity.tests.ps1"
 
-
-if ($UsePester) {
-    $invokePester = Get-Command Invoke-Pester -ErrorAction SilentlyContinue
-    if ($null -eq $invokePester) {
-        throw "Pester is required when -UsePester is specified"
-    }
-
-    $pesterTestPath = Join-Path $testRoot "controlflow-contract.Tests.ps1"
-    $pesterResult = Invoke-Pester -Path $pesterTestPath -PassThru
-
-    # Be robust across Pester versions: Pester 5 exposes .Result ("Passed"/"Failed"),
-    # while Pester 3 exposes .FailedCount. Treat either as the failure signal.
-    $pesterFailed = $false
-    if ($null -ne $pesterResult.PSObject.Properties["Result"]) {
-        $pesterFailed = ($pesterResult.Result -ne "Passed")
-    } elseif ($null -ne $pesterResult.PSObject.Properties["FailedCount"]) {
-        $pesterFailed = ($pesterResult.FailedCount -ne 0)
-    }
-
-    if ($pesterFailed) {
-        throw "Pester contract tests failed"
-    }
-}
 
 Write-Output "VALID ControlFlow contract suite"
 
