@@ -1,0 +1,38 @@
+name: validate-audit-candidate
+
+on:
+  push:
+    branches: [codex/audit-validation-2026-11-09]
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    name: Audit contracts on ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      CONTROLFLOW_TEST_PROGRESS: '1'
+      TMPDIR: ${{ runner.temp }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Record checked source and runtime
+        shell: pwsh
+        run: |
+          git rev-parse HEAD
+          $PSVersionTable
+      - name: Full contracts and corpus validation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./tests/run-contract-tests.ps1
+          ./evals/run-e2e.ps1 -RepoRoot . -Suite Pilot -ValidateOnly
+          ./evals/run-e2e.ps1 -RepoRoot . -Suite Release -ValidateOnly
+          ./evals/run-risk-diagnostics.ps1 -RepoRoot . -ValidateOnly
