@@ -16,7 +16,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-    timeout-minutes: 40
+    timeout-minutes: 90
     env:
       CONTROLFLOW_TEST_PROGRESS: '1'
     steps:
@@ -34,6 +34,9 @@ jobs:
           if ((Get-FileHash $package).Hash.ToLowerInvariant() -cne '8dd4060fc3bc895f05bd655e4ab82abe346de54a4e6415dfb727cc8378672b69') { throw 'Pester package hash mismatch' }
           [IO.Compression.ZipFile]::ExtractToDirectory($package,(Join-Path $env:RUNNER_TEMP 'Pester5'))
       - name: Run structural contract suite
+        env:
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
         shell: pwsh
         run: |
           Import-Module (Join-Path $env:RUNNER_TEMP 'Pester5/Pester.psd1') -Force
@@ -51,7 +54,7 @@ jobs:
     name: Contracts on macOS
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: macos-15
-    timeout-minutes: 40
+    timeout-minutes: 90
     env:
       CONTROLFLOW_TEST_PROGRESS: '1'
     steps:

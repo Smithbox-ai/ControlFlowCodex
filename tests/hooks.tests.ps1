@@ -8,12 +8,15 @@ function Hook([string]$Repo,[string]$Session,[string]$Event='Stop',[string]$Perm
     foreach($arg in @('-NoProfile','-File',"$script:CoreRoot/scripts/invoke-hook.ps1",'-Event',$Event)){[void]$psi.ArgumentList.Add($arg)}
     $process=[Diagnostics.Process]::new();$process.StartInfo=$psi
     try {
+        $elapsed=[Diagnostics.Stopwatch]::StartNew()
         [void]$process.Start()
         $out=$process.StandardOutput.ReadToEndAsync();$err=$process.StandardError.ReadToEndAsync()
         $process.StandardInput.WriteLine((@{session_id=$Session;cwd=$Repo;turn_id='fixture-turn';stop_hook_active=$false;permission_mode=$PermissionMode}|ConvertTo-Json -Compress))
         $process.StandardInput.Close()
-        $deadline=if($Event -eq 'Interrupt'){3000}else{15000}
+        # Match the existing native hook budgets, including the strict Interrupt bound.
+        $deadline=switch($Event){'Interrupt'{3000};'SessionStart'{20000};default{30000}}
         if(-not $process.WaitForExit($deadline)){$process.Kill($true);throw "Hook exceeded $deadline ms fixture deadline"}
+        if($env:CONTROLFLOW_TEST_PROGRESS -ceq '1'){[Console]::Out.WriteLine("HOOK_TIMING event=$Event elapsed_ms=$($elapsed.ElapsedMilliseconds) deadline_ms=$deadline")}
         $stdout=$out.GetAwaiter().GetResult();$stderr=$err.GetAwaiter().GetResult()
         Assert ($process.ExitCode -eq 0) "Hook must emit valid native protocol, stderr=$stderr"
         return ($stdout|ConvertFrom-Json -AsHashtable)
