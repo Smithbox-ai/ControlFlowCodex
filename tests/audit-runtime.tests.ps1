@@ -99,18 +99,21 @@ if($Case -in @('All','Identity')){
   $receipt=@($approved.evidence.events|Where-Object {$_.type -ceq 'phase_review'})[-1].receipt_id
   Throws {Update-ControlFlowRun $r $rp @{type='resume';user_decision_ref='fixture:partial';decision_receipt_id=$receipt}} 'PartialCaseApprovalCannotResume'
  }finally{RemoveFixture $r}
- if(-not $IsWindows){
-  $r=NewFixture
-  try{
-   File $r 'A.txt' 'initial';File $r 'a.txt' 'initial';Git $r @('add','.')|Out-Null;Git $r @('commit','-qm','case paths')|Out-Null
+ $r=NewFixture
+ try{
+  File $r 'A.txt' 'initial'
+  $caseSensitive=-not [IO.File]::Exists((Join-Path $r 'a.txt'))
+  Write-Output "CASE_PATH_CAPABILITY case_sensitive=$caseSensitive"
+  if($caseSensitive){
+   File $r 'a.txt' 'initial';Git $r @('add','.')|Out-Null;Git $r @('commit','-qm','case paths')|Out-Null
    $p=V4Contract $r final;$v=Get-Content -Raw -LiteralPath $p|ConvertFrom-Json -AsHashtable
    $v.work_type='docs';$v.workflow=@{profile='light';required_artifacts=@('review-packet')};$v.review_policy.human_design=$false;$v.scope=@('owned.txt','A.txt')
    [IO.File]::WriteAllText($p,($v|ConvertTo-Json -Depth 40));$rp=(Start-ControlFlowRun $r $p -ManualFallback).run_path
    Update-ControlFlowRun $r $rp @{type='preflight';status='APPROVED'}|Out-Null
    File $r 'A.txt' 'changed';File $r 'a.txt' 'unauthorized'
    Throws {Update-ControlFlowRun $r $rp @{type='resume';mode='planning';user_decision_ref='fixture:replan'}} 'CaseDistinctUnauthorizedCarriedPath'
-  }finally{RemoveFixture $r}
- }else{Write-Output 'SKIP case-distinct source paths: requires case-sensitive filesystem'}
+  }else{Write-Output 'SKIP case-distinct source paths: requires case-sensitive filesystem'}
+ }finally{RemoveFixture $r}
 }
 if($Case -in @('All','Git')){
  $r=NewFixture;$oldPath=$env:PATH;$oldDirectory=[Environment]::CurrentDirectory
