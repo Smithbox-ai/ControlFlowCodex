@@ -27,7 +27,7 @@ jobs:
         run: |
           git rev-parse HEAD
           $PSVersionTable
-      - name: Remaining macOS and affected Linux contracts
+      - name: Final audit runtime and affected filesystem checks
         env:
           TMPDIR: ${{ runner.temp }}
         shell: pwsh
@@ -35,13 +35,13 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $runner = Get-Content ./tests/run-contract-tests.ps1 -Raw
           $suites = @([regex]::Matches($runner,'(?m)^Invoke-ContractScript "([^"]+)"') | ForEach-Object { $_.Groups[1].Value })
-          if ($suites.Count -ne 50 -or $suites[32] -cne 'hooks.tests.ps1') { throw 'Unexpected suite inventory' }
-          # The previous immutable run passed the unchanged first 32 suites on
-          # macOS and all 50 on Linux. Only hook fixture/CI budgets changed.
+          if ($suites.Count -ne 50 -or $suites[46] -cne 'audit-runtime.tests.ps1') { throw 'Unexpected suite inventory' }
+          # Prior immutable runs cover macOS suites 1-46 and all 50 on Linux.
+          # The only new change probes actual case sensitivity in audit-runtime.
           $selected = if ($IsMacOS) {
-            @('controlflow-skill-contract.tests.ps1') + $suites[32..49]
+            $suites[46..49]
           } else {
-            @('controlflow-skill-contract.tests.ps1','hooks.tests.ps1','release-workflow.tests.ps1')
+            @('audit-runtime.tests.ps1')
           }
           function Invoke-AuditSuite([string]$Name) {
             $clock = [Diagnostics.Stopwatch]::StartNew()
@@ -53,6 +53,10 @@ jobs:
           }
           foreach ($suite in $selected) { Invoke-AuditSuite $suite }
           $pwsh = Join-Path $PSHOME 'pwsh'
+          if (-not $IsMacOS) {
+            & $pwsh -NoProfile -File ./tests/audit-sensitivity.tests.ps1 -Only identity
+            if ($LASTEXITCODE -ne 0) { throw 'Identity sensitivity failed' }
+          }
           & $pwsh -NoProfile -File ./evals/run-e2e.ps1 -RepoRoot . -Suite Pilot -ValidateOnly
           if ($LASTEXITCODE -ne 0) { throw 'Pilot validation failed' }
           & $pwsh -NoProfile -File ./evals/run-e2e.ps1 -RepoRoot . -Suite Release -ValidateOnly
