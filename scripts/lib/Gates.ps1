@@ -114,6 +114,7 @@ function Get-CFV4GateReasons($Read,$ContractRead,$Source,$Fresh,$InputDigests=$n
     $c=$ContractRead.contract;$artifacts=Get-CFV4Artifacts $Read $c $InputDigests -Source $Source
     if($c.contract_status -cne 'final'){'DRAFT_CANNOT_COMPLETE';return}
     try{Assert-CFV4Execution $Read $ContractRead}catch{'V4_PREFLIGHT_MISSING_OR_STALE'}
+    Get-CFV4BaselineInputReasons $Read $c.checks $Source $InputDigests
     foreach($kind in $c.workflow.required_artifacts){
         if(-not $artifacts.ContainsKey($kind)){('ARTIFACT_MISSING_OR_STALE:'+$kind);continue}
         if($kind -in @('qa-recheck','review-packet') -and ($artifacts[$kind].artifact.source_digest -cne $Source.digest -or $artifacts[$kind].contract_digest -cne $ContractRead.digest)){('ARTIFACT_SOURCE_STALE:'+$kind)}
@@ -167,6 +168,7 @@ function Test-ControlFlowGate {
         $source=Get-CFRunSource $RepoRoot $RunPath $s;$result.source_digest=$source.digest
         $reasons=[Collections.Generic.List[string]]::new()
         if($s.status -notin @('ACTIVE','COMPLETED')){$reasons.Add('RUN_NOT_ACTIVE')}
+        if($s.schema_version -ceq '4.0.0' -and $s.ContainsKey('repair_escalation')){$reasons.Add('REPAIR_ESCALATION_PENDING')}
         if($contract.task_id -cne $s.task_id -or $contract.baseline.commit -cne $s.baseline_commit){$reasons.Add('CONTRACT_BINDING_CHANGED')}
         if($Kind -eq 'Commit' -and $contract.commit.mode -ne 'required'){$reasons.Add('COMMIT_NOT_REQUESTED')}
         if($contract.schema_version -ceq '3.0.0' -and $contract.tier -in @('MEDIUM','LARGE')) {

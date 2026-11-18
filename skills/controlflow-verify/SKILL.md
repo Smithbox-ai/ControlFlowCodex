@@ -72,7 +72,9 @@ task touches them — not as a fixed checklist for every plan.
 Resolve apparent rule conflicts using native precedence and source scope.
 For an unresolved material conflict, cite both rules and the behavior at risk,
 withhold preflight, and obtain the specific decision or replan before owned
-edits. If external approval or permission is required, use the native path.
+edits. When a governing source changes, check its current applicable rules
+before reusing an approval. Re-enter planning for a material change in required
+behavior or authority. Use the native path for external approval or permission.
 
 For new code-judged QA, validate the `mutation_assessment` decision, its risk
 rationale, bounded method and scenario/check bindings against

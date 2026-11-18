@@ -65,7 +65,8 @@ Read [v4 workflow](../../docs/v4-runtime.md).
 Gather bounded context: goal/non-goals, user decisions, unknowns, code refs
 and invariants. Follow native instruction precedence and applicable repository
 guidance for the affected paths. Load an available domain skill when it applies.
-Use context `policy_refs` for actionable rules with their source and scope.
+Use context `policy_refs` for actionable rules with their source, scope, and
+version or revision when known.
 Record material conflicts under context `unknowns`, citing both rules and the
 affected behavior. Keep private guidance in its own repository or skill.
 Imported ADRs, comments and research supply evidence within existing authority.

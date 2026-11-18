@@ -34,11 +34,37 @@ try {
     $configCase.expected['config.json']='{"count":9007199254740993}'
     Write-E2EText $configPath '{"count":9007199254740992.0}'
     Assert (-not (Test-E2EOutcome -Case $configCase -Fixture $configFixture).pass) 'config grading compares numbers without floating-point rounding'
+
+    $negativeCase=@($cases|Where-Object id -eq 'tenant-routing')[0]
+    $negativeFixture=New-E2EFixture -Case $negativeCase -Directory (Join-Path $scratch 'cli-rejection')
+    Set-E2EReferenceOutcome -Case $negativeCase -Fixture $negativeFixture
+    $negativeCli=Join-Path $negativeFixture.root 'cli.ps1'
+    $referenceCli=[IO.File]::ReadAllText($negativeCli)
+    $swallowsFailure=@'
+param([string]$InputFile,[string]$OutputFile)
+. "$PSScriptRoot/src/operations.ps1"
+$value=Get-Content -LiteralPath $InputFile -Raw | ConvertFrom-Json -AsHashtable
+try { Invoke-Operation $value | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $OutputFile }
+catch { exit 0 }
+'@
+    Write-E2EText $negativeCli $swallowsFailure
+    $swallowed=Test-E2EOutcome -Case $negativeCase -Fixture $negativeFixture
+    Assert ($swallowed.hidden_check.receipt_verified -and $swallowed.cli_check.collection_complete -and -not $swallowed.pass -and 'cli-behavior:1' -in $swallowed.failures) 'CLI grading rejects a swallowed failure even when the underlying operation correctly rejects invalid input'
+    Write-E2EText $negativeCli ($swallowsFailure.Replace('catch { exit 0 }','catch { Set-Content -LiteralPath $OutputFile -Value ''["partial success"]''; exit 1 }'))
+    $partialOutput=Test-E2EReleaseCli -Case $negativeCase -Fixture $negativeFixture
+    Assert ($partialOutput.collection_complete -and -not $partialOutput.pass -and 'cli-behavior:1' -in $partialOutput.failures) 'CLI grading rejects partial success output after failure'
+    Write-E2EText $negativeCli $referenceCli
+    $correctRejection=Test-E2EReleaseCli -Case $negativeCase -Fixture $negativeFixture
+    Assert ($correctRejection.pass -and $correctRejection.completed_checks -eq 2 -and $correctRejection.observations[1].exit_code -ne 0) 'reference CLI passes both the success and observable rejection paths'
+
     foreach($case in @($cases|Where-Object tier -eq 'LARGE')){
         $fixture=New-E2EFixture -Case $case -Directory (Join-Path $scratch $case.id)
         Set-E2EReferenceOutcome -Case $case -Fixture $fixture
         $result=Test-E2EReleaseCli -Case $case -Fixture $fixture
         Assert ($result.applicable -and $result.pass -and $result.collection_complete -and $result.completed_checks -ge 1) "real file-to-file reference CLI: $($case.id) $($result.failures -join ',')"
+        if($case.id -ceq 'atomic-batch'){
+            Assert (@($result.observations | Where-Object {$_.rejection_expected -and $_.matches -and -not $_.output_present}).Count -eq 1) 'atomic batch rejects the whole operation through the CLI without publishing output'
+        }
         $cli=Join-Path $fixture.root 'cli.ps1'
         Write-E2EText $cli 'param([string]$InputFile,[string]$OutputFile); "null" | Set-Content ($OutputFile+".wrong")'
         Assert (-not (Test-E2EReleaseCli -Case $case -Fixture $fixture).collection_complete) "wrong output path cannot pass CLI: $($case.id)"

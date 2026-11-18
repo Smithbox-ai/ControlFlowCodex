@@ -29,6 +29,7 @@ $verify = Read-Skill "skills/controlflow-verify/SKILL.md"
 $review = Read-Skill "skills/controlflow-review/SKILL.md"
 $entry = Read-Skill "skills/controlflow/SKILL.md"
 $execution = Read-Skill "skills/controlflow/references/execution.md"
+$reviewReference = Read-Skill "skills/controlflow/references/review.md"
 $planYaml = Read-Skill "skills/controlflow-plan/agents/openai.yaml"
 $verifyYaml = Read-Skill "skills/controlflow-verify/agents/openai.yaml"
 $reviewYaml = Read-Skill "skills/controlflow-review/agents/openai.yaml"
@@ -179,6 +180,20 @@ Assert-Contains $execution 'three repair rounds' 'bound retries for the same unr
 Assert-Contains $execution 'required flaky check' 'preserve required checks even when intermittently failing'
 Assert-Contains $evidence 'independently inspect changed assertions' 'review consequential test changes against the original expectation'
 Assert-Contains $evidence 'independent negative control' 'use evidence outside the changed assertions'
+
+# --- stronger evidence uses bounded scenarios and a stable acceptance source ---
+Assert-Contains $plan 'version or revision' 'record the identity of externally governed rules when known'
+Assert-Contains $verify 'before reusing an approval' 'review the current governing rules before relying on a past approval'
+Assert-Contains $execution 'bounded readiness' 'plan a bounded observable startup check'
+Assert-Contains $execution 'disallowed side effect' 'verify rejection and its effect where that is the risk'
+Assert-Contains $execution 'clean up only' 'verification cleans up its own disposable resources'
+Assert-Contains $execution 'repair_attempt' 'link the optional persisted repair budget'
+Assert-Contains $evidence 'baseline_inputs' 'link fixed repository baseline verifier inputs'
+Assert-Contains $evidence 'approved differences' 'differential checks preserve intentionally unchanged behavior'
+Assert-Contains $evidence 'held-out inputs' 'independent verifiers can use private fixtures'
+Assert-Contains $evidence 'verifier revision' 'record an independently reproducible acceptance source'
+Assert-Contains $reviewReference 'before sharing the writer' 'obtain initial independent findings before the writer verdict'
+Assert-Contains $reviewReference 'prior findings' 'focus subsequent review using findings from previous rounds'
 
 Write-Output "VALID skill behavior contract"
 

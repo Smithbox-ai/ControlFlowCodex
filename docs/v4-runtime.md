@@ -97,6 +97,23 @@ Existing coverage events still map criterion IDs to captured checks. Human-only
 criteria need no dummy command. Existing V3 runs keep their original executable
 coverage rule; a migrated V4 task collects fresh artifacts and evidence.
 
+## Protected verifier inputs
+
+A V4 check can declare `baseline_inputs` as literal repository-relative paths
+to verifier scripts, configuration, or fixtures. Declare the files before
+preflight and select regular tracked files that are clean against the original
+Git baseline. ControlFlow rejects changes to these files before executing the
+check and at delivery. The protected paths must agree across the working tree,
+index and current HEAD. Preflight freezes the protected check definition until
+explicit planning re-entry. Keep new regression tests in separate paths from
+the protected verifier.
+
+Ordinary `inputs` bind the observed contents around a run. `baseline_inputs`
+also preserve the declared baseline files across the task. Use an owner-approved
+baseline or an independently managed verifier for consequential checks. The
+ledger checks the specified file identities. The reviewer still assesses
+authority, dependencies, and whether the fixed check proves the criterion.
+
 ## Re-entry and stops
 
 Use resume with mode planning and user_decision_ref after previously authorized
@@ -125,6 +142,38 @@ For V4, late Interrupt notifications cannot reopen COMPLETED, CANCELLED or a
 run. A notification observed before completion's final mailbox check still
 rejects completion; a later generation cannot change the durable terminal state.
 Historical V3 notification/resume behavior remains unchanged.
+
+### Escalate repeated repair failures
+
+V4 runs can use `repair_attempt` through `update-run.ps1`. Record one event
+after a substantive repair has failed. Use two actual captures of the same
+blocking check and keep one `cause_id` per unresolved problem. The first failure
+sets the starting point. A repeated command by itself is not a repair round.
+
+```json
+{
+  "type": "repair_attempt",
+  "cause_id": "startup-config",
+  "before_capture_id": "<failed capture before the repair>",
+  "after_capture_id": "<current failed capture after the repair>",
+  "change": "Describe the changed input or fix and why it addressed this cause",
+  "question": "Which prerequisite can the owner provide?"
+}
+```
+
+The runtime binds the records to the current check and planning epoch. A third
+failed round requires a concrete question and saves a `BLOCKED` stop with a
+pending escalation. Resume with the exact `repair_escalation_id` reported by
+the run and a `user_decision_ref` from the actual user. This resumes work while
+the normal completion and commit gates still apply. A same-check success or
+explicit planning re-entry starts a new series. During a series, changes to
+the final contract need planning re-entry. A capture from an older runtime
+without an epoch binding cannot document a repair round.
+
+The ledger validates capture identity, failure, and sequence. The author
+records the diagnosis and the reviewer assesses whether the change addressed
+the same cause. For a manual verification without executable captures, use
+the existing structured `BLOCKED` stop.
 
 Completion rechecks source, raw contract and required check-input digests before
 returning PASS and again before publishing COMPLETED. The gate retains its

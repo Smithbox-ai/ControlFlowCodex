@@ -18,6 +18,11 @@ requires an independent review, self-review cannot satisfy it: record a blocker
 until that review arrives or the user explicitly revises the contract. Do not
 invent another agent's verdict. Include reader usage in measured task cost.
 
+Give the independent reviewer the original QA criteria, applicable rules,
+bounded diff and relevant evidence. Request initial findings before sharing the
+writer's verdict. Use prior findings to focus follow-up on repairs and changed
+risks. Bind any new verdict to the exact current candidate.
+
 Write short review rationale inside the run directory and record supported
 `phase_review` decisions against exact current artifacts/targets. Record human
 decisions only after the actual user decision, with visible manual assurance.

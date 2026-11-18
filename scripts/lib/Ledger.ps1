@@ -226,7 +226,59 @@ function Assert-CFV4Execution($Read,$ContractRead) {
     if($ContractRead.contract.schema_version -cne $Read.state.schema_version){throw 'RUNTIME_VERSION_MISMATCH'}
     if($ContractRead.contract.contract_status -cne 'final'){throw 'DRAFT_CANNOT_AUTHORIZE_EXECUTION'}
     $pre=@($Read.evidence.events|Where-Object {$_.type -ceq 'preflight' -and $_.planning_epoch_id -eq $Read.state.planning_epoch_id})
-    if($pre.Count -eq 0 -or $pre[-1].contract_digest -cne $ContractRead.digest){throw 'V4_PREFLIGHT_REQUIRED'}
+    if($pre.Count -eq 0 -or $pre[-1].contract_digest -cne $ContractRead.digest -or $Read.state.preflight_digest -cne $ContractRead.digest){throw 'V4_PREFLIGHT_REQUIRED'}
+}
+function Get-CFV4ProtectedPathRecords([string]$RepoRoot,[string[]]$Paths) {
+    $index=Invoke-CFGit $RepoRoot (@('--literal-pathspecs','ls-files','--stage','-z','--')+$Paths)
+    $head=Invoke-CFGit $RepoRoot (@('--literal-pathspecs','ls-tree','-rz','--full-tree','HEAD','--')+$Paths)
+    [ordered]@{
+        index=@(Get-CFSorted @(Get-CFNul $index))
+        head=@(Get-CFSorted @(Get-CFNul $head))
+    }
+}
+function Get-CFV4BaselineInputReasons($Read,$Checks,$Source,$InputDigests=$null) {
+    $protected=@($Checks|Where-Object {$_.ContainsKey('baseline_inputs')})
+    if($protected.Count -eq 0){return}
+    $root=$Read.state.binding.worktree_realpath
+    $baseline=Get-CFTree $root $Read.state.baseline_commit
+    $initial=$Read.initial_snapshot
+    $initialIndex=Get-CFEntriesMap $initial.index
+    $initialWorking=Get-CFEntriesMap $initial.working
+    $initialSource=Get-CFEntriesMap $initial.source.entries
+    $currentSource=Get-CFEntriesMap $Source.entries
+    $reasons=[Collections.Generic.List[string]]::new()
+    foreach($check in $protected){
+        $observations=Get-CFV4ProtectedPathRecords $root $check.baseline_inputs
+        $indexRecords=[Collections.Generic.HashSet[string]]::new([string[]]$observations.index,[StringComparer]::Ordinal)
+        $headRecords=[Collections.Generic.HashSet[string]]::new([string[]]$observations.head,[StringComparer]::Ordinal)
+        $previousCount=$reasons.Count
+        foreach($path in $check.baseline_inputs){
+            if(-not $baseline.ContainsKey($path) -or $baseline[$path].mode -cnotin @('100644','100755')){
+                $reasons.Add("BASELINE_INPUT_NOT_TRACKED_REGULAR_FILE: $path");continue
+            }
+            $expected=$baseline[$path]
+            if(-not $initialIndex.ContainsKey($path) -or -not $initialSource.ContainsKey($path) -or -not $initialWorking.ContainsKey($path)){
+                $reasons.Add("BASELINE_INPUT_NOT_CLEAN: $path");continue
+            }
+            $startIndex=$initialIndex[$path];$startFile=$initialSource[$path]
+            if($startIndex.oid -cne $expected.oid -or $startIndex.mode -cne $expected.mode -or
+               $startFile.mode -cne $expected.mode -or $path -cin $initial.dirty_paths -or
+               (Get-CFEntryIdentity $initialWorking[$path]) -cne (Get-CFEntryIdentity $startFile)){
+                $reasons.Add("BASELINE_INPUT_NOT_CLEAN: $path");continue
+            }
+            $indexRecord="$($expected.mode) $($expected.oid) 0`t$path"
+            $headRecord="$($expected.mode) blob $($expected.oid)`t$path"
+            if(-not $indexRecords.Contains($indexRecord) -or -not $headRecords.Contains($headRecord) -or
+               (Get-CFEntryIdentity $currentSource[$path]) -cne (Get-CFEntryIdentity $startFile)){
+                $reasons.Add("BASELINE_INPUT_CHANGED: $path");continue
+            }
+            try{Assert-CFNoLinks ([IO.Path]::Combine($root,$path))}catch{$reasons.Add("BASELINE_INPUT_CHANGED: $path")}
+        }
+        if($reasons.Count -eq $previousCount -and $null -ne $InputDigests -and -not $InputDigests.ContainsKey($check.id)){
+            $InputDigests[$check.id]=Get-CFCheckInputDigest $root $check -ObservedProtectedPaths $observations
+        }
+    }
+    Get-CFUniqueSorted $reasons
 }
 function Test-CFV4Capture($Read,$ContractRead,$Source,[string]$CheckId,[switch]$RequireReport,$InputDigests=$null) {
     $defs=@($ContractRead.contract.checks|Where-Object {$_.id -ceq $CheckId});if($defs.Count -ne 1){return $false};$def=$defs[0]
@@ -250,6 +302,60 @@ function Assert-CFForeignPreserved([string]$RepoRoot,[string]$RunPath,$Read) {
         if((Get-CFEntryIdentity $a) -cne (Get-CFEntryIdentity $b)){throw 'FOREIGN_WORKTREE_CHANGED'}
         $a=if($oldIndex.ContainsKey($path)){$oldIndex[$path]}else{$null};$b=if($index.ContainsKey($path)){$index[$path]}else{$null}
         if((Get-CFIndexIdentity $a) -cne (Get-CFIndexIdentity $b)){throw 'FOREIGN_INDEX_CHANGED'}
+    }
+}
+function Add-CFV4RepairAttempt($Read,$ContractRead,$Source,$Event,$Copy) {
+    $state=$Read.state;$contract=$ContractRead.contract
+    if($state.status -cne 'ACTIVE' -or $state.ContainsKey('repair_escalation')){throw 'RUN_NOT_ACTIVE'}
+    Assert-CFV4Execution $Read $ContractRead
+    $cause=$Event['cause_id'];$beforeId=$Event['before_capture_id'];$afterId=$Event['after_capture_id']
+    if($cause -isnot [string] -or $cause -cnotmatch '\A[a-z0-9][a-z0-9-]{0,63}\z'){throw 'INVALID_REPAIR_CAUSE_ID'}
+    if($Event['change'] -isnot [string] -or [string]::IsNullOrWhiteSpace($Event['change'])){throw 'REPAIR_CHANGE_REQUIRED'}
+    $change=$Event.change.Trim() -replace '\s+',' '
+    if($beforeId -isnot [string] -or $afterId -isnot [string] -or $beforeId -cnotmatch '\A[a-f0-9]{32}\z' -or $afterId -cnotmatch '\A[a-f0-9]{32}\z'){throw 'REPAIR_CAPTURE_IDS_REQUIRED'}
+    $after=@($Read.evidence.checks|Where-Object {$_.capture_id -ceq $afterId})
+    if($after.Count -ne 1){throw 'REPAIR_CAPTURE_NOT_FOUND'}
+    $after=$after[0];$checkId=$after.check_id
+    $captures=@($Read.evidence.checks|Where-Object {$_.check_id -ceq $checkId})
+    if($captures.Count -lt 2 -or $captures[-2].capture_id -cne $beforeId -or $captures[-1].capture_id -cne $afterId){throw 'REPAIR_CAPTURES_NOT_CURRENT_SEQUENCE'}
+    $before=$captures[-2]
+    $checks=@($contract.checks|Where-Object {$_.id -ceq $checkId})
+    if($checks.Count -ne 1){throw 'UNKNOWN_CHECK'}
+    $check=$checks[0];$commandDigest=Get-CFJsonHash $check
+    if(-not (Test-CFV4RequiredCheck $contract $checkId)){
+        $artifacts=Get-CFV4Artifacts $Read $contract -AllowStaleChecks
+        if(-not $artifacts.ContainsKey('qa-plan') -or $checkId -cnotin @(Get-CFV4QACheckIds $artifacts['qa-plan'].artifact)){throw 'REPAIR_CHECK_NOT_BLOCKING'}
+    }
+    foreach($capture in @($before,$after)){
+        if($capture['planning_epoch_id'] -ne $state.planning_epoch_id -or $capture.contract_digest -cne $ContractRead.digest){throw 'REPAIR_CAPTURE_STALE'}
+        if($capture.status -cnotin @('FAIL','TIMEOUT') -or $capture.command_digest -cne $commandDigest -or $capture.source_before -cne $capture.source_after){throw 'REPAIR_CAPTURE_NOT_FAILED_OBSERVATION'}
+    }
+    if($after.source_after -cne $Source.digest){throw 'REPAIR_CAPTURE_STALE'}
+    if(Test-CFCheckHasInputs $check){
+        $inputs=Get-CFCheckInputDigest $state.binding.worktree_realpath $check
+        if($null -eq $before['input_before'] -or $before['input_before'] -cne $before['input_after'] -or $after['input_before'] -cne $inputs -or $after['input_after'] -cne $inputs){throw 'REPAIR_CAPTURE_STALE'}
+    }
+    $attempts=@($Read.evidence.events|Where-Object {$_.type -ceq 'repair_attempt'})
+    if(@($attempts|Where-Object {$_.after_capture_id -ceq $afterId}).Count -gt 0){throw 'REPAIR_CAPTURE_ALREADY_RECORDED'}
+    $prior=@($attempts|Where-Object {$_.cause_id -ceq $cause -and $_.planning_epoch_id -eq $state.planning_epoch_id -and $_.contract_digest -ceq $ContractRead.digest})
+    if(@($prior|Where-Object {$_.check_id -cne $checkId}).Count -gt 0){throw 'REPAIR_CAUSE_CHECK_CHANGED'}
+    $lastSuccess=$captures|Where-Object {
+        $_.status -ceq 'PASS' -and $_['planning_epoch_id'] -eq $state.planning_epoch_id -and $_.contract_digest -ceq $ContractRead.digest
+    }|Select-Object -Last 1
+    $lastSuccessId=if($null -ne $lastSuccess){$lastSuccess.capture_id}
+    $series=@($prior|Where-Object {$_['last_success_capture_id'] -ceq $lastSuccessId})
+    $round=1
+    if($series.Count -gt 0 -and $series[-1].round -lt 3){
+        $round=$series[-1].round+1
+        if(@($series|Select-Object -Last ($round-1)|Where-Object {$_.change -ieq $change}).Count -gt 0){throw 'REPAIR_CHANGE_ALREADY_RECORDED'}
+    }
+    $Copy.change=$change;$Copy.check_id=$checkId;$Copy.round=$round;$Copy.last_success_capture_id=$lastSuccessId
+    $Copy.contract_digest=$ContractRead.digest;$Copy.source_digest=$Source.digest
+    if($round -eq 3){
+        if($Event['question'] -isnot [string] -or [string]::IsNullOrWhiteSpace($Event['question'])){throw 'REPAIR_ESCALATION_QUESTION_REQUIRED'}
+        $Copy.question=$Event.question.Trim()
+        $state.repair_escalation=@{id=$afterId;cause_id=$cause;check_id=$checkId;question=$Copy.question}
+        $state.status='BLOCKED';$state.structured_reason=@{reason='BLOCKED';evidence='REPAIR_LIMIT';repair_escalation_id=$afterId}
     }
 }
 function Update-CFV4Event([string]$RepoRoot,[string]$RunPath,$Read,$Event,$Copy) {
@@ -364,9 +470,30 @@ function Update-CFV4Event([string]$RepoRoot,[string]$RunPath,$Read,$Event,$Copy)
         }
         'preflight' {
             if($contract.contract_status -cne 'final'){throw 'FINAL_CONTRACT_REQUIRED'}
+            if($s.preflight_digest -cne $c.digest -and @($Read.evidence.events|Where-Object {
+                $_.type -ceq 'repair_attempt' -and $_.planning_epoch_id -eq $s.planning_epoch_id
+            }).Count -gt 0){throw 'REPAIR_HISTORY_REPLAN_REQUIRED'}
             foreach($profile in $contract.quality_profiles){if($profile.required -and (Get-CFV4ProfileCapability $contract $profile) -cne 'available'){throw ('REQUIRED_PROFILE_UNSUPPORTED:'+$profile.id)}}
             if($contract.review_policy.assurance -ceq 'verified' -and ($contract.review_policy.human_design -or $contract.review_policy.human_final -or @($contract.review_policy.requirements|Where-Object {'human' -cin $_.judges}).Count -gt 0)){throw 'TRUSTED_DECISION_SOURCE_UNAVAILABLE'}
             if($source.digest -cne $s.planning_source_digest){throw 'PRODUCTION_EDIT_BEFORE_PREFLIGHT'}
+            $protectedChecks=Get-CFMap
+            foreach($check in $contract.checks){
+                if($check.ContainsKey('baseline_inputs')){$protectedChecks[$check.id]=Get-CFJsonHash $check}
+            }
+            $previousPreflight=@($Read.evidence.events|Where-Object {
+                $_.type -ceq 'preflight' -and $_.planning_epoch_id -eq $s.planning_epoch_id -and $_.ContainsKey('baseline_check_bindings')
+            })
+            if($previousPreflight.Count -gt 0){
+                foreach($binding in $previousPreflight[-1].baseline_check_bindings){
+                    if(-not $protectedChecks.ContainsKey($binding.id) -or $protectedChecks[$binding.id] -cne $binding.sha256){throw "BASELINE_CHECK_CHANGED: $($binding.id)"}
+                }
+            }
+            $Copy.Remove('baseline_check_bindings')
+            if($protectedChecks.Count -gt 0){
+                $Copy.baseline_check_bindings=@(foreach($id in (Get-CFSorted $protectedChecks.Keys)){
+                    [ordered]@{id=$id;sha256=$protectedChecks[$id]}
+                })
+            }
             Assert-CFForeignPreserved $RepoRoot $RunPath $Read
             $artifacts=Get-CFV4Artifacts $Read $contract
             foreach($kind in @('context','design','qa-plan','implementation-plan')){if($kind -cin $contract.workflow.required_artifacts -and -not $artifacts.ContainsKey($kind)){throw ('PHASE_PREREQUISITE_MISSING:'+$kind)}}
@@ -381,7 +508,12 @@ function Update-CFV4Event([string]$RepoRoot,[string]$RunPath,$Read,$Event,$Copy)
             if($contract.review_policy.human_design -and (-not $artifacts.ContainsKey('design') -or -not (Test-CFV4Review $Read $c $artifacts.design.ref human design))){throw 'HUMAN_DESIGN_DECISION_REQUIRED'}
             $Copy.authorized_scope=@($contract.scope);$Copy.promoted_artifacts=@($artifacts.Values|ForEach-Object {$_.ref});$s.preflight_digest=$c.digest
         }
+        'repair_attempt' {Add-CFV4RepairAttempt $Read $c $source $Event $Copy}
         'resume' {
+            if($s.ContainsKey('repair_escalation')){
+                if($Event['repair_escalation_id'] -isnot [string] -or $Event.repair_escalation_id -cne $s.repair_escalation.id){throw 'EXACT_REPAIR_ESCALATION_REQUIRED'}
+                if($Event['user_decision_ref'] -isnot [string] -or [string]::IsNullOrWhiteSpace($Event['user_decision_ref'])){throw 'EXPLICIT_USER_DECISION_REQUIRED'}
+            }elseif($Event.ContainsKey('repair_escalation_id')){throw 'STALE_REPAIR_ESCALATION_ID'}
             if($s.stop_source_digest -and $source.digest -cne $s.stop_source_digest){throw 'EDIT_DURING_LAWFUL_STOP'}
             if($Event.ContainsKey('mode') -and $Event.mode -ceq 'planning'){
                 if([string]::IsNullOrWhiteSpace([string]$Event.user_decision_ref)){throw 'EXPLICIT_USER_DECISION_REQUIRED'}
@@ -408,6 +540,7 @@ function Update-CFV4Event([string]$RepoRoot,[string]$RunPath,$Read,$Event,$Copy)
                 }
                 $s.human_wait_targets=@()
             }
+            [void]$s.Remove('repair_escalation')
             $s.stop_source_digest=$null
         }
         'stop' {
@@ -572,11 +705,12 @@ function Get-CFCheckReportPath([string]$RepoRoot,$Check) {
     $full=[IO.Path]::GetFullPath([IO.Path]::Combine($RepoRoot,$path));Assert-CFNoLinks $full;return $full
 }
 function Test-CFCheckHasInputs($Check) {
-    return $Check.ContainsKey('inputs') -or ($Check.ContainsKey('report') -and $Check.report.format -ceq 'stryker-json')
+    return $Check.ContainsKey('inputs') -or $Check.ContainsKey('baseline_inputs') -or ($Check.ContainsKey('report') -and $Check.report.format -ceq 'stryker-json')
 }
 function Get-CFCheckInputPaths($Check) {
     $paths=Get-CFMap
     if($Check.ContainsKey('inputs')){foreach($path in $Check.inputs){$paths[$path]=$true}}
+    if($Check.ContainsKey('baseline_inputs')){foreach($path in $Check.baseline_inputs){$paths[$path]=$true}}
     if($Check.ContainsKey('report') -and $Check.report.format -ceq 'stryker-json'){
         if(-not $Check.report.ContainsKey('scope') -or @($Check.report.scope).Count -eq 0){throw 'MUTATION_SCOPE_REQUIRED'}
         foreach($path in $Check.report.scope){
@@ -586,7 +720,7 @@ function Get-CFCheckInputPaths($Check) {
     }
     return Get-CFSorted $paths.Keys
 }
-function Get-CFCheckInputDigest([string]$RepoRoot,$Check) {
+function Get-CFCheckInputDigest([string]$RepoRoot,$Check,$ObservedProtectedPaths=$null) {
     $RepoRoot=(Get-CFIdentity $RepoRoot).worktree_realpath
     $entries=@(foreach($path in (Get-CFCheckInputPaths $Check)){
         $full=[IO.Path]::GetFullPath([IO.Path]::Combine($RepoRoot,$path))
@@ -601,6 +735,10 @@ function Get-CFCheckInputDigest([string]$RepoRoot,$Check) {
             [ordered]@{path=$path;state='missing';hash=''}
         }
     })
+    if($Check.ContainsKey('baseline_inputs')){
+        if($null -eq $ObservedProtectedPaths){$ObservedProtectedPaths=Get-CFV4ProtectedPathRecords $RepoRoot $Check.baseline_inputs}
+        return Get-CFJsonHash ([ordered]@{files=$entries;baseline_paths=$ObservedProtectedPaths})
+    }
     return Get-CFJsonHash $entries
 }
 function Open-CFWriter([string]$RunPath,[string]$RepoRoot) {
@@ -622,10 +760,16 @@ function Update-ControlFlowRun {
         if((Test-CFV4TerminalState $s) -and -not ($s.status -ceq 'COMPLETED' -and $Event.type -ceq 'stop' -and $Event.reason -ceq 'BLOCKED')){throw 'TERMINAL_RUN_IMMUTABLE'}
         if($s.schema_version -ceq '4.0.0'){Update-CFV4Event $RepoRoot $RunPath $read $Event $eventCopy}
         switch -CaseSensitive ($Event.type) {
-            {$_ -in @('artifact','phase_review')} {if($s.schema_version -cne '4.0.0'){throw 'UNSUPPORTED_EVENT'}}
+            {$_ -in @('artifact','phase_review') -or $_ -ceq 'repair_attempt'} {if($s.schema_version -cne '4.0.0'){throw 'UNSUPPORTED_EVENT'}}
             {$_ -in @('preflight','review','coverage')} {
                 if($s.status -ne 'ACTIVE'){throw 'RUN_NOT_ACTIVE'}
                 $c=Read-ControlFlowContract $s.contract_path;$source=Get-CFRunSource $RepoRoot $RunPath $s
+                if($s.schema_version -ceq '4.0.0' -and $Event.type -ceq 'preflight'){
+                    # Publish only the contract and source observed by V4 preflight.
+                    if($c.digest -cne $s.preflight_digest -or $source.digest -cne $s.last_observed_source_digest){throw 'PREFLIGHT_OBSERVATION_CHANGED'}
+                    $baselineReasons=@(Get-CFV4BaselineInputReasons $read $c.contract.checks $source)
+                    if($baselineReasons.Count -gt 0){throw ($baselineReasons -join ',')}
+                }
                 $eventCopy.contract_digest=$c.digest;$eventCopy.source_digest=$source.digest
                 if($Event.type -in @('preflight','review')){if($Event.status -cne 'APPROVED'){throw 'APPROVAL_REQUIRED'}}
                 else {
@@ -690,7 +834,13 @@ function Capture-ControlFlowCheck {
         if([IO.Path]::IsPathRooted($rel) -or $rel -eq '..' -or $rel.StartsWith('../') -or $rel.StartsWith('..\')){throw 'CHECK_CWD_OUTSIDE_REPOSITORY'}
         Assert-CFNoLinks $cwd
         $before=Get-CFRunSource $RepoRoot $RunPath $state
-        $inputBefore=if(Test-CFCheckHasInputs $check){Get-CFCheckInputDigest $RepoRoot $check}else{$null}
+        $inputBefore=$null
+        if($check.ContainsKey('baseline_inputs')){
+            $inputDigests=Get-CFMap
+            $baselineReasons=@(Get-CFV4BaselineInputReasons $read @($check) $before $inputDigests)
+            if($baselineReasons.Count -gt 0){throw ($baselineReasons -join ',')}
+            $inputBefore=$inputDigests[$CheckId]
+        }elseif(Test-CFCheckHasInputs $check){$inputBefore=Get-CFCheckInputDigest $RepoRoot $check}
         $reportPath=$null;$reportStamp=$null;if($check.ContainsKey('report')){$reportPath=Get-CFCheckReportPath $RepoRoot $check;if([IO.File]::Exists($reportPath)){$reportStamp=[IO.File]::GetLastWriteTimeUtc($reportPath).Ticks}}
         $timeout=if($check.ContainsKey('timeout_seconds')){[int]$check.timeout_seconds}else{120}
         $command='& { '+$check.command+"`n"+' }; if (-not $?) { exit 1 }; if ($null -ne $LASTEXITCODE) { exit $LASTEXITCODE }'
@@ -702,6 +852,7 @@ function Capture-ControlFlowCheck {
         $capture=@{capture_id=[guid]::NewGuid().ToString('N');check_id=$CheckId;status=$status;exit_code=$result.exit_code;timed_out=$result.timed_out;command=$check.command;working_directory=$check.working_directory;command_digest=(Get-CFJsonHash $check);contract_digest=$c.digest;source_before=$before.digest;source_after=$after.digest;recorded_at=[DateTime]::UtcNow.ToString('o');stdout_ref=(Write-CFImmutable $RunPath 'output' $result.stdout 'stdout.bin');stderr_ref=(Write-CFImmutable $RunPath 'output' $result.stderr 'stderr.bin')}
         $capture.process_incomplete=$result.process_incomplete
         if($state.schema_version -ceq '4.0.0'){
+            $capture.planning_epoch_id=$state.planning_epoch_id
             foreach($key in @('output_limit_bytes','output_limit_exceeded','stdout_observed_bytes','stderr_observed_bytes')){$capture[$key]=$result[$key]}
             if($result.output_limit_exceeded){$capture.error='OUTPUT_LIMIT_EXCEEDED'}
         }

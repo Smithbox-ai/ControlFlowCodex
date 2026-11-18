@@ -132,8 +132,20 @@ When consequential work also changes tests or verifier rules, independently
 inspect changed assertions and checks against the original QA expectations.
 Use an appropriate unchanged baseline check, owner-maintained check, or
 independent negative control alongside legitimate test additions and updates.
-Reuse existing property or differential tests when they exercise the relevant
-invariant or comparison.
+For a declared check with unchanged tracked verifier files, consider V4
+`baseline_inputs` to bind them to their original Git baseline. See
+[runtime interfaces](../../../docs/v4-runtime.md).
+
+For behavior graded by an available owner-controlled verifier, agree on the
+criterion and verifier origin before changes. Record the verifier revision and
+observed result for the exact candidate, such as a protected CI run or an
+independent review receipt. Keep held-out inputs with their owner and cite the
+result in the applicable review. Report external evidence with its provenance
+and preserve the declared capture and judge requirements.
+
+Use existing property checks for affected invariants with reproducible inputs.
+For behavior that should be preserved, use existing differential checks with
+the same inputs and account for approved differences.
 
 QA recheck compares the unchanged expected results with actual captured output,
 fault dispositions and limitations. The packet retains skipped/unsupported work,

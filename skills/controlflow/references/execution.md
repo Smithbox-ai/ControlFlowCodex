@@ -71,9 +71,13 @@ Progress does not replace the contract, captured evidence, or delivery gates.
 For a material startup or user-visible change, plan a representative scenario
 through the normal entry point. Include prerequisites, the expected observable
 result, and a relevant failure or boundary case in the existing QA baseline.
-Use the project's supported startup command and a safe, authorized environment
-and fixture. Observe readiness and exercise the affected path. Capture the
-command or steps, environment, and actual result alongside build and test evidence.
+When startup is in scope, use the supported launch command and a bounded
+readiness check, such as a health response or expected log event. Exercise the
+changed path in an authorized environment with disposable fixtures. If
+unintended effects are the risk, check the expected rejection and absence of
+the disallowed side effect. Record the candidate, command or steps,
+environment, observed outcome, and a focused evidence reference. Clean up
+only the processes and fixtures created for the check.
 
 When a capability, prerequisite, or authorization is missing, record the
 unexecuted verification as `NOT_RUN` in the run's evidence or limitations
@@ -87,10 +91,15 @@ Retry a failed check only when a new diagnosis, targeted fix, or restored
 prerequisite makes progress plausible. Preserve failure evidence. Before
 repeating an action with side effects, verify its prior outcome and that the
 repeat is safe and authorized. After three repair rounds for the same unresolved
-cause, record a `BLOCKED` stop with evidence and the next decision or prerequisite.
-This guidance applies in manual fallback too. Obey any earlier native stop or
-runtime limit. Retain each required flaky check, investigate instability, and
-keep the gate and acceptance criteria intact.
+cause, stop incomplete with evidence and the next decision or prerequisite.
+On opted-in V4 runs, record a `repair_attempt` for a targeted round with fresh
+failing captures of the same declared blocking check before and after the
+repair. Use a stable cause ID and include a specific escalation question on
+the third round. See [runtime interfaces](../../../docs/v4-runtime.md).
+For other problems, use the structured `BLOCKED` stop. This guidance applies in
+manual fallback too. Obey any earlier native stop or runtime limit. Retain each
+required flaky check, investigate instability, and keep the gate and acceptance
+criteria intact.
 
 ## Proportional implementation
 

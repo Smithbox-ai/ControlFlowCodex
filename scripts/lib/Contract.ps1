@@ -71,9 +71,12 @@ function Read-ControlFlowContract {
     }
     foreach($check in $contract.checks){
         foreach($id in $check.criteria){if(-not $criteria.ContainsKey($id)){throw "INVALID_CRITERION_REFERENCE: $id"}}
-        if($check.ContainsKey('inputs')){foreach($path in $check.inputs){
-            if([IO.Path]::IsPathRooted($path) -or $path.Contains('\') -or $path -match '[:*?]' -or @($path.Split('/') | Where-Object {$_ -in @('','.','..')}).Count -gt 0){throw "INVALID_CHECK_INPUT_PATH: $path"}
-        }}
+        foreach($kind in @('inputs','baseline_inputs')){
+            if(-not $check.ContainsKey($kind)){continue}
+            foreach($path in $check[$kind]){
+                if([IO.Path]::IsPathRooted($path) -or $path.Contains('\') -or $path -match '[:*?]' -or @($path.Split('/') | Where-Object {$_ -in @('','.','..')}).Count -gt 0){throw "INVALID_CHECK_INPUT_PATH: $path"}
+            }
+        }
     }
     if($contract.ContainsKey('risks')){foreach($risk in $contract.risks){if($risk.impact -eq 'HIGH' -and -not $risk.resolved -and $contract.tier -ne 'LARGE'){throw 'UNRESOLVED_HIGH_REQUIRES_LARGE'}}}
     if($contract.ContainsKey('phases')) {

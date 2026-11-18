@@ -8,12 +8,18 @@ function Get-E2EReleaseCliProbes {
         'inventory-ledger'=@{input='[{"sku":"x","delta":5},{"sku":"x","delta":-2},{"sku":"y","delta":2}]';expected='{"x":3,"y":2}'}
         'event-deduplication'=@{input='[{"id":"a","revision":1},{"id":"b","revision":1},{"id":"a","revision":3}]';expected='[{"id":"a","revision":3},{"id":"b","revision":1}]'}
         'batch-validation'=@{input='[{"id":"","amount":-1},{"id":"a","amount":2},{"id":"b","amount":-1}]';expected='[0,2]'}
-        'tenant-routing'=@{input='{"routes":{"a":"one","b":"two"},"requests":["b","a"]}';expected='["two","one"]'}
+        'tenant-routing'=@(
+            @{input='{"routes":{"a":"one","b":"two"},"requests":["b","a"]}';expected='["two","one"]'},
+            @{input='{"routes":{"a":"one","b":"two"},"requests":["b","A"]}';rejects_input=$true;expected='nonzero exit without published output'}
+        )
         'dependency-order'=@{input='{"a":[],"b":["a"],"c":["b"]}';expected='["a","b","c"]'}
         'window-aggregation'=@{input='[{"time":"2026-01-02T01:00:00+03:00","value":2},{"time":"2026-01-01T23:00:00Z","value":3},{"time":"2026-01-02T12:00:00Z","value":7}]';expected='["2026-01-01:5","2026-01-02:7"]'}
         'config-migration'=@{input='{"version":1,"timeoutSeconds":3,"enabled":false}';expected='{"version":2,"timeoutMs":3000,"enabled":false}'}
         'permission-matrix'=@{input='{"role":"editor","action":"write"}';expected='true'}
-        'atomic-batch'=@{input='{"balance":5,"deltas":[-2,3]}';expected='6'}
+        'atomic-batch'=@(
+            @{input='{"balance":5,"deltas":[-2,3]}';expected='6'},
+            @{input='{"balance":1,"deltas":[2,-4,5]}';rejects_input=$true;expected='nonzero exit without published output'}
+        )
     }
     if(-not $probes.ContainsKey($Case.id)){throw "LARGE case has no predeclared CLI probe: $($Case.id)"}
     return @($probes[$Case.id])
@@ -60,24 +66,31 @@ function Test-E2EReleaseCli {
     $complete=$true;$completed=0
     for($i=0;$i -lt $probes.Count;$i++){
         $probe=$probes[$i];$nonce=[guid]::NewGuid().ToString('N')
+        $rejectsInput=[bool]$probe['rejects_input']
         $input=Join-Path (Split-Path $Fixture.root -Parent) ("$nonce-cli-input.json")
         $output=Join-Path (Split-Path $Fixture.root -Parent) ("$nonce-cli-output.json")
         Write-E2EText $input $probe.input
         $capture=Invoke-E2EProcess -Executable (Get-Command pwsh).Source -Arguments @('-NoProfile','-File',(Join-Path $Fixture.root 'cli.ps1'),'-InputFile',$input,'-OutputFile',$output) -WorkingDirectory $Fixture.root -TimeoutSeconds 15
-        $collected=$capture.exit_code -eq 0 -and -not $capture.timed_out -and $capture.streams_complete -and $capture.cleanup_verified -and (Test-Path -LiteralPath $output -PathType Leaf)
+        $collected=$null -ne $capture.exit_code -and -not $capture.timed_out -and $capture.streams_complete -and $capture.cleanup_verified
+        $outputPresent=Test-Path -LiteralPath $output
         $matches=$false;$outputHash=$null
-        if($collected){
-            try{
-                $actual=[System.Text.Json.Nodes.JsonNode]::Parse([IO.File]::ReadAllText($output))
-                $expected=[System.Text.Json.Nodes.JsonNode]::Parse($probe.expected)
-                $matches=Test-E2EJsonValueEqual $actual $expected
-                $outputHash=(Get-FileHash -LiteralPath $output).Hash.ToLowerInvariant()
-            }catch{$collected=$false}
+        if($rejectsInput){
+            $matches=$collected -and $capture.exit_code -ne 0 -and -not $outputPresent
+        }else{
+            $collected=$collected -and $capture.exit_code -eq 0 -and (Test-Path -LiteralPath $output -PathType Leaf)
+            if($collected){
+                try{
+                    $actual=[System.Text.Json.Nodes.JsonNode]::Parse([IO.File]::ReadAllText($output))
+                    $expected=[System.Text.Json.Nodes.JsonNode]::Parse($probe.expected)
+                    $matches=Test-E2EJsonValueEqual $actual $expected
+                    $outputHash=(Get-FileHash -LiteralPath $output).Hash.ToLowerInvariant()
+                }catch{$collected=$false}
+            }
         }
         if(-not $collected){$complete=$false;$fail.Add("cli-collection:$i")}
         elseif(-not $matches){$completed++;$fail.Add("cli-behavior:$i")}
         else{$completed++}
-        $observations.Add(@{probe=$i;nonce=$nonce;collected=$collected;matches=$matches;input_sha256=Get-E2EHash $probe.input;output_sha256=$outputHash;expected_sha256=Get-E2EHash $probe.expected;exit_code=$capture.exit_code;timed_out=$capture.timed_out;streams_complete=$capture.streams_complete;cleanup_verified=$capture.cleanup_verified;wall_ms=$capture.wall_ms})
+        $observations.Add(@{probe=$i;nonce=$nonce;collected=$collected;matches=$matches;input_sha256=Get-E2EHash $probe.input;output_sha256=$outputHash;expected_sha256=Get-E2EHash $probe.expected;rejection_expected=$rejectsInput;output_present=$outputPresent;exit_code=$capture.exit_code;timed_out=$capture.timed_out;streams_complete=$capture.streams_complete;cleanup_verified=$capture.cleanup_verified;wall_ms=$capture.wall_ms})
     }
     return @{applicable=$probes.Count -gt 0;pass=$complete -and $fail.Count -eq 0;collection_complete=$complete;planned_checks=$probes.Count;completed_checks=$completed;failures=$fail.ToArray();observations=$observations.ToArray()}
 }

@@ -36,6 +36,10 @@ foreign content and validate requested commit/index outcomes. Passing `echo`,
 zero assertions, unexecuted graders or a model's plausible completion statement
 cannot certify an outcome. Keep oracle expectations fixed when repairing code.
 Expected JSON is compared structurally and preserves scalar types and array order.
+The held-out CLI probes for tenant routing and atomic batches also check rejection
+through the public file-to-file command. Rejection requires a nonzero exit and an
+absent output path when the process finishes. A timeout or incomplete process
+observation leaves the probe uncollected. The positive probe uses the same command.
 
 ## Comparison and measurements
 
