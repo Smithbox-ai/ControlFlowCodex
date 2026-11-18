@@ -1,8 +1,9 @@
 # ControlFlow for Codex
 
 Compact planning and completion discipline for native Codex repository tasks.
-`$controlflow` adds a durable execution contract: what should change, how it will
-be checked, which decisions are needed, and what evidence permits completion.
+`$controlflow-codex:controlflow` saves a durable execution contract that records
+what should change, how it will be checked, which decisions are needed, and what
+evidence permits completion.
 It helps keep a multi-step feature or fix aligned with its agreed behavior,
 preserve existing user work, and resume without treating missing checks as done.
 Native Codex owns tools, sandboxing, permission decisions, execution, review,
@@ -143,8 +144,9 @@ Use `plans/templates/plan.meta.v4.json` for a new contract and validate it with
 `plans/examples/small-v4.meta.json`; replace its sample baseline and checks with
 actual repository evidence before starting a run.
 
-For multi-step work, ControlFlow uses native `update_plan` when available. It
-restores the accepted milestones and verified progress after resume, updates
+For multi-step work outside Plan Mode, ControlFlow uses native `update_plan`
+when available and permitted. It restores accepted milestones and verified
+progress after resume, updates
 after meaningful stages or plan changes, and keeps blocked/waiting work
 incomplete. Hosts without that tool receive honest textual progress. The native
 TODO reflects work status; captured evidence and completion gates still decide
@@ -152,8 +154,9 @@ delivery. See [the progress policy](skills/controlflow/references/progress.md).
 
 The three manual skills remain explicit: `$controlflow-codex:controlflow-plan`,
 `$controlflow-codex:controlflow-verify`, and `$controlflow-codex:controlflow-review`.
-Internal references use their logical names. Native `/plan` and `/review`
-remain available. See [the execution reference](skills/controlflow/references/execution.md).
+Reuse native planning and review on hosts that provide them. Save the ControlFlow
+contract after leaving native Plan Mode, and reuse native review findings for the
+current candidate. See [the execution reference](skills/controlflow/references/execution.md).
 
 ## Evidence and completion
 

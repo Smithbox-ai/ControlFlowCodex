@@ -1,12 +1,12 @@
 ---
 name: controlflow-verify
-description: "Use when the user explicitly invokes $controlflow-verify for preflight of a saved repository contract."
+description: "Use when the user explicitly invokes $controlflow-codex:controlflow-verify for preflight of a saved repository contract."
 ---
 
 # ControlFlow Verify
 
 Verify a saved plan before implementation. The checks run inline with zero
-shipped subagents. Invoke explicitly with `$controlflow-verify`.
+shipped subagents.
 
 Reflect the preflight result in available native `update_plan`, following
 [progress](../controlflow/references/progress.md). Rejected, waiting, or
@@ -115,9 +115,9 @@ own any explicitly authorized revision.
 
 ## Boundary
 
-Do not spawn plugin verifier agents. For an isolated second opinion use native
-`/review` or an explicitly requested native subagent. The host owns approvals,
-sandboxing, retries, and subagent lifecycle.
+For an isolated second opinion, use a permitted native read-only reviewer with
+the exact contract and artifact references, or request the required human
+decision. The host owns approvals, sandboxing, retries and subagent lifecycle.
 
 
 

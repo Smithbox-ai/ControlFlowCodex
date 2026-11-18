@@ -10,6 +10,11 @@ milestones and verified status, use available `update_plan`, and update after
 meaningful milestones or plan changes. If unavailable, report textual progress.
 Progress does not replace the contract, captured evidence, or delivery gates.
 
+Keep native Plan Mode read-only. If a ControlFlow run is already active, use a
+separate native planning thread or record an authorized `PLAN_MODE` stop before
+switching modes. Some Codex builds report approval policy in Stop callbacks,
+so the hook cannot always detect the mode switch. See [hook behavior](../../../docs/hooks.md#plan-mode).
+
 1. Observe the repository and user request. Apply the relevant rules from
    [planning intake](../../controlflow-plan/SKILL.md#v4-planning). Use `classify-task.ps1`
    (`WorkType`, `Domain`, `ChangedFiles`, `BehaviorChange`, `CrossBoundary`,
@@ -39,14 +44,16 @@ Progress does not replace the contract, captured evidence, or delivery gates.
    `start-run.ps1 -RepoRoot <repo> -ContractPath <contract> -SessionId <native-id>`.
    Obtain the session from native runtime identity, such as `CODEX_THREAD_ID`
    when supplied; never invent one. If identity or trusted hook callbacks are
-   unavailable, pass `-ManualFallback` and report the limitation. Keep the
-   returned `run_path`. External V2/V3 contracts require migration to a new V4
-   draft; existing V3 runs continue only under their marked legacy semantics.
+   unavailable, pass `-ManualFallback` and report the limitation. Omit `-SessionId`
+   for manual fallback, including when identity is known but callbacks are
+   untrusted. Keep the returned `run_path`. External V2/V3 contracts require a
+   new V4 draft. Existing V3 runs keep their marked legacy semantics.
 4. For full profiles, save context/design, obtain required human design decisions,
    then save the QA baseline before the implementation plan. Finalize declarations,
-   use `$controlflow-verify`, and record approved preflight through `update-run.ps1`
-   before owned code or test edits. A draft cannot authorize edits. Repair/replan
-   when rejected. Light docs follow their packet/applicable-evidence path.
+   follow [Verify](../../controlflow-verify/SKILL.md), and record approved preflight
+   through `update-run.ps1` before owned code or test edits. A draft cannot
+   authorize edits. Repair/replan when rejected. Light docs follow their
+   packet/applicable-evidence path.
    One writer implements using [proportional implementation](#proportional-implementation);
    readers only answer bounded questions. Count all usage.
 5. Execute each declared check through
@@ -55,10 +62,11 @@ Progress does not replace the contract, captured evidence, or delivery gates.
    record criterion coverage only then. Exercise the planned user path using
    [operational verification](#operational-verification). Use [bounded repair](#bounded-repair)
    for failures and recapture stale checks.
-6. Consume required native generic review, repair findings, and use
-   `$controlflow-review` for conformance. Save QA recheck and a current review
-   packet, then obtain every required code/agent/human judge. Never alter expected
-   QA outcomes to justify a defect; re-enter planning for a true requirement change.
+6. Reuse native review findings for the same candidate when available, repair
+   findings, and follow [Review](../../controlflow-review/SKILL.md) for conformance.
+   Save QA recheck and a current review packet, then obtain every required
+   code/agent/human judge. Re-enter planning for a requirement change and keep
+   the original QA outcomes when repairing a defect.
 7. Run `completion-gate.ps1 -RepoRoot <repo> -RunPath <run>` before final claims.
    When commit is required, first run `commit-gate.ps1` and inspect its concrete
    candidate parent/tree/owned paths. Use native selective commit of those exact

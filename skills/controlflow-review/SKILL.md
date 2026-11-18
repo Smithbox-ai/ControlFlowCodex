@@ -1,13 +1,12 @@
 ---
 name: controlflow-review
-description: "Use when the user explicitly invokes $controlflow-review for conformance of a repository implementation to its saved contract."
+description: "Use when the user explicitly invokes $controlflow-codex:controlflow-review for conformance of a repository implementation to its saved contract."
 ---
 
 # ControlFlow Review
 
-Add the ControlFlow-specific layer after implementation. Native `/review` is the
-general code-review pass; consume its results rather than repeating them. Invoke
-explicitly with `$controlflow-review`.
+After implementation, reuse native `/review` findings for the same candidate
+when available. Apply the saved ControlFlow criteria and evidence below.
 
 After review/repair milestones, synchronize available native `update_plan`
 under [progress](../controlflow/references/progress.md). Reopen work when checks
@@ -17,17 +16,19 @@ TODO completion does not satisfy the delivery gate.
 ## V4 evidence
 
 Read the active V4 run, current `plan.meta.json`, immutable phase snapshots and
-captures. Review the QA recheck and source-bound packet after native generic
-review and repairs. The light docs route remains compact. Use
-`completion-gate.ps1 -RepoRoot <repo> -RunPath <run>` for current scope,
+captures. Review the QA recheck and source-bound packet after repairs. The light
+docs route remains compact. Use `completion-gate.ps1 -RepoRoot <repo> -RunPath <run>` for current scope,
 ownership, provenance/freshness, coverage, and blockers. A required commit adds
 candidate and actual SHA/tree checks; commit only on explicit user request.
 Record the actual required agent/human phase decisions after deterministic
 checks; missing or unknown required verdicts keep completion blocked.
 
 Assess whether each executable check really proves its criterion. The ledger
-cannot establish semantic truth of an LLM's PROVEN claim. Missing independent
-review required by the contract remains a blocker. Write concise rationale
+cannot establish semantic truth of an LLM's PROVEN claim. A permitted independent
+native reviewer can satisfy an agent judge by assessing the exact current packet
+and criteria when the contract permits that reviewer. If the contract requires
+a specific reviewer or review mode, keep it blocked until that review is
+available or the user authorizes a contract revision. Write concise rationale
 inside the run, then record the supported `phase_review` event against the
 exact current packet/target through `update-run.ps1`. Do not supply a human
 decision unless the user actually made it. Runtime binds decisions to the current
@@ -44,8 +45,7 @@ interruption, Plan Mode, or BLOCKED ends the turn without DONE.
 
 - Read the approved external `state.contract_path` and its active
   run. MEDIUM/LARGE also have a brief rationale inside the run directory.
-- Read the aggregate diff. If native `/review` results are available, consume
-  them.
+- Read the authorized aggregate diff.
 
 ## Five checks
 
@@ -73,8 +73,7 @@ boundaries, testability, side-effect isolation, and established conventions can
 justify structure. Do not report minor naming/style preferences, subjective
 clean-code opinions, raw line counts, or arbitrary file/class size thresholds.
 
-That is the entire ControlFlow review. General correctness, security, style,
-documentation, and change-size signals belong to native `/review`.
+Native code review covers general correctness, security and style.
 
 ## Findings
 

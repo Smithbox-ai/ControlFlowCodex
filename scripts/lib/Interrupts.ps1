@@ -95,7 +95,7 @@ function Request-ControlFlowInterrupt {
     $header=Resolve-CFActiveHeader $RepoRoot $SessionId
     if($null -eq $header){return $null}
     $state=$header.state;$runPath=$header.run_path
-    if(Test-CFV4TerminalState $state){return $null}
+    if($state.manual_fallback -or (Test-CFV4TerminalState $state)){return $null}
     # Never silently repair a corrupt notification or consult potentially huge
     # evidence outputs on the native three-second interrupt path.
     $existing=Read-CFPendingInterrupt $runPath $state

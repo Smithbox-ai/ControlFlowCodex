@@ -35,6 +35,7 @@ function Test-CFV4TerminalState($State) {
 function Start-ControlFlowRun {
     param([Parameter(Mandatory)][string]$RepoRoot,[Parameter(Mandatory)][string]$ContractPath,[string]$SessionId,[switch]$ManualFallback)
     if(-not $SessionId -and -not $ManualFallback){throw 'TRUSTED_SESSION_REQUIRED'}
+    if($SessionId -and $ManualFallback){throw 'MANUAL_FALLBACK_REQUIRES_NO_SESSION'}
     $identity=Get-CFIdentity $RepoRoot;$RepoRoot=$identity.worktree_realpath
     $read=Read-ControlFlowContract $ContractPath;$contract=$read.contract
     if($contract.schema_version -cne '4.0.0'){throw 'NEW_RUN_REQUIRES_V4: migrate the legacy contract to a fresh V4 draft; existing runs are unchanged'}
@@ -57,7 +58,10 @@ function Start-ControlFlowRun {
         Assert-CFNoLinks ($active+'.lock')
         $activeLock=[IO.File]::Open($active+'.lock',[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
         try {
-            if([IO.File]::Exists($active)) { $prior=Get-ControlFlowActiveRun $RepoRoot $SessionId;if($prior.state.status -notin @('COMPLETED','CANCELLED') -and -not (Test-CFV4TerminalState $prior.state)){throw 'SESSION_ALREADY_ACTIVE'} }
+            if([IO.File]::Exists($active)) {
+                $prior=Get-ControlFlowActiveRun $RepoRoot $SessionId -IgnoreManualFallback
+                if($null -ne $prior -and $prior.state.status -notin @('COMPLETED','CANCELLED') -and -not (Test-CFV4TerminalState $prior.state)){throw 'SESSION_ALREADY_ACTIVE'}
+            }
             $pointer=@{schema_version=$contract.schema_version;run_path=$runPath;run_id=$id;task_id=$contract.task_id;binding=$identity}
             $tmp=$active+'.'+[guid]::NewGuid().ToString('N')+'.tmp';Write-CFFlushed $tmp $script:Utf8.GetBytes(($pointer|ConvertTo-Json -Depth 20 -Compress))
             Move-CFMutableFile $tmp $active
@@ -98,9 +102,9 @@ function Read-ControlFlowRun {
     return @{state=$state;evidence=$evidence;initial_snapshot=$initial;run_path=$RunPath;pending_interrupt=$pending;legacy_semantics=($state.schema_version -ceq '3.0.0')}
 }
 function Get-ControlFlowActiveRun {
-    param([Parameter(Mandatory)][string]$RepoRoot,[Parameter(Mandatory)][string]$SessionId)
+    param([Parameter(Mandatory)][string]$RepoRoot,[Parameter(Mandatory)][string]$SessionId,[switch]$IgnoreManualFallback)
     $header=Resolve-CFActiveHeader $RepoRoot $SessionId
-    if($null -eq $header){return $null}
+    if($null -eq $header -or ($IgnoreManualFallback -and $header.state.manual_fallback)){return $null}
     return Read-ControlFlowRun $header.state.binding.worktree_realpath $header.run_path $SessionId
 }
 function Get-CFRunSource([string]$RepoRoot,[string]$RunPath,$State) { Get-ControlFlowSourceDigest $RepoRoot $State.baseline_commit $RunPath $State.binding.session_id }
@@ -757,6 +761,9 @@ function Update-ControlFlowRun {
         if($null -ne $ExpectedRevision -and $s.revision -ne $ExpectedRevision){throw 'REVISION_CONFLICT'}
         $eventCopy=$Event|ConvertTo-Json -Depth 40|ConvertFrom-Json -AsHashtable
         $eventCopy.recorded_at=[DateTime]::UtcNow.ToString('o')
+        # A Plan Mode stop records a new pause. Preserve any earlier stop,
+        # including a pending interrupt observed while acquiring the writer lock.
+        if($Event.type -ceq 'stop' -and $Event.reason -ceq 'PLAN_MODE' -and $Event['evidence'] -and $s.status -cne 'ACTIVE'){return $read}
         if((Test-CFV4TerminalState $s) -and -not ($s.status -ceq 'COMPLETED' -and $Event.type -ceq 'stop' -and $Event.reason -ceq 'BLOCKED')){throw 'TERMINAL_RUN_IMMUTABLE'}
         if($s.schema_version -ceq '4.0.0'){Update-CFV4Event $RepoRoot $RunPath $read $Event $eventCopy}
         switch -CaseSensitive ($Event.type) {

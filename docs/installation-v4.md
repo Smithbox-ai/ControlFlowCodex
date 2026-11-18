@@ -52,8 +52,9 @@ It does not install dependencies or alter native security settings.
 
 Enable/select the local plugin with your Codex host's supported plugin flow.
 Where that host requires cache refresh, use its supported `codex plugin add`
-flow for the installed source; do not edit cache files manually. Review `/hooks`
-and grant trust to the exact current ControlFlow definitions yourself. Install,
+flow for the installed source; do not edit cache files manually. Review the
+current hooks through `/hooks` or Desktop Settings > Hooks. A change in the
+bundled files can require another review. Install,
 enablement, discovery and actual callback verification are separate steps.
 Untrusted or unsupported callbacks require explicit manual fallback, not a claim
 of automatic enforcement. See [hooks and fallback](hooks.md).

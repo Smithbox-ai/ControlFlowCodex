@@ -29,6 +29,7 @@ $verify = Read-Skill "skills/controlflow-verify/SKILL.md"
 $review = Read-Skill "skills/controlflow-review/SKILL.md"
 $entry = Read-Skill "skills/controlflow/SKILL.md"
 $execution = Read-Skill "skills/controlflow/references/execution.md"
+$progress = Read-Skill "skills/controlflow/references/progress.md"
 $reviewReference = Read-Skill "skills/controlflow/references/review.md"
 $planYaml = Read-Skill "skills/controlflow-plan/agents/openai.yaml"
 $verifyYaml = Read-Skill "skills/controlflow-verify/agents/openai.yaml"
@@ -38,7 +39,11 @@ $evidence = Read-Skill "skills/controlflow/references/evidence.md"
 $runtime = Read-Skill "docs/v4-runtime.md"
 
 # --- plan skill: compact durable contract ---
-Assert-Contains $plan 'after native `/plan`' 'plan positions after native /plan'
+Assert-Contains $plan 'while native Plan Mode is active' 'plan does not write state in native Plan Mode'
+Assert-Contains $progress 'Outside native Plan Mode' 'native TODO uses the host mode as well as tool availability'
+Assert-Contains $execution 'Omit `-SessionId`' 'manual fallback never binds a native Stop hook'
+Assert-Contains $execution 'separate native planning thread' 'active run isolation when native Stop lacks Plan Mode identity'
+Assert-Contains $plan 'nested `AGENTS.md`' 'affected paths can have instructions outside the initial discovery chain'
 Assert-Contains $plan "get-storage-paths.ps1" "canonical external plan location"
 Assert-Contains $execution "get-storage-paths.ps1" "external storage setup"
 Assert-Contains $readme "CONTROLFLOW_STATE_ROOT" "external storage configuration"
@@ -54,7 +59,8 @@ Assert-Contains $plan "phases" "plan phases field"
 Assert-Contains $plan "light profile" "safe docs proportionality"
 Assert-Contains $plan "LARGE" "plan large tier"
 Assert-Contains $plan "scripts/validate-contract.ps1" "plan validator command"
-Assert-Contains $plan '$controlflow-verify' 'plan hands off to verify'
+Assert-Contains $plan '../controlflow-verify/SKILL.md' 'the agent reads Verify instead of impersonating an explicit skill invocation'
+Assert-Contains $execution '../../controlflow-review/SKILL.md' 'the agent reads Review instead of impersonating an explicit skill invocation'
 Assert-Contains $plan "not_applicable" "plan sparse risks rule"
 Assert-Contains $plan "Do not duplicate native execution" "plan native boundary"
 
@@ -92,6 +98,7 @@ Assert-NotContains $verify "revision-request.json" "verify revision handoff"
 Assert-NotContains $verify "Score Breakdown" "verify score breakdown"
 Assert-NotContains $verify "Mirage Catalog" "verify mirage catalog"
 Assert-NotContains $verify "P1 Phantom API" "verify mirage codes"
+Assert-NotContains $verify '`/review`' 'generic Git diff review is outside plan preflight'
 
 # --- review skill: five conformance checks ---
 Assert-Contains $review "Five checks" "review five checks section"
@@ -120,12 +127,16 @@ Assert-Contains $small 'compact V4 profile' 'SMALL keeps profile-sensitive gates
 Assert-Contains $plan 'do not add mandatory readers or diagrams' 'light docs avoid ceremony'
 Assert-Contains $execution 'Light docs follow their packet/applicable-evidence path' 'light docs keep compact current evidence'
 Assert-Contains $verify 'zero shipped subagents' 'no new verifier agent requirement'
-Assert-Contains $review 'Native `/review` is the general code-review pass' 'native generic review ownership'
+Assert-Contains $review 'reuse native `/review` findings' 'native generic review ownership and reuse'
+Assert-Contains $review 'a specific reviewer or review mode' 'the contract controls independent reviewer requirements'
 
 # --- yaml policies: all three explicit-only ---
 Assert-Contains $planYaml "allow_implicit_invocation: false" "plan implicit invocation disabled"
 Assert-Contains $verifyYaml "allow_implicit_invocation: false" "verify implicit invocation disabled"
 Assert-Contains $reviewYaml "allow_implicit_invocation: false" "review implicit invocation disabled"
+foreach ($skill in @(@($entry,'controlflow'),@($plan,'controlflow-plan'),@($review,'controlflow-review'),@($verify,'controlflow-verify'))) {
+    Assert-Contains $skill[0] ('$controlflow-codex:'+$skill[1]) 'documented native invocation is namespaced'
+}
 
 # --- README: compact vNext framing ---
 Assert-Contains $readme "Compact" "README compact framing"

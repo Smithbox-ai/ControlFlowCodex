@@ -1,9 +1,9 @@
 # Native TODO and progress
 
-For multi-step work, use native `update_plan` only when the current host exposes
-that tool. Inspect its actual schema; do not imitate a successful call through
-a shell command, guess another tool, or introduce a TODO runtime, MCP server,
-hook, or parallel task-state store. TRIVIAL does not need a progress ceremony.
+Outside native Plan Mode, use `update_plan` for multi-step work when the host
+exposes and permits it. Inspect its actual schema. In Plan Mode use the host's
+planning response. Keep one native progress list and use textual updates when
+the tool is unavailable. TRIVIAL does not need a progress ceremony.
 
 At entry or resume, restore a short list of main milestones from the accepted
 plan, saved contract, actual repository progress, and available check/review

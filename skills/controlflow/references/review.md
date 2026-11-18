@@ -6,8 +6,8 @@ saved current contract, not a chat copy. A reviewer verifies repository claims,
 meaningful checks, failure/rollback paths, ownership, and scope. Unknown facts
 remain unknown. HIGH risk unresolved after research keeps the task LARGE.
 
-Native Codex generic review owns correctness/security/style. Consume its
-findings, repair blockers, then compare the actual change with the contract:
+Reuse current native review findings when available, repair blockers, then
+compare the actual change with the contract:
 scope, acceptance evidence, external behavior, and promised operability/rollback.
 Any further production edit requires recapturing affected checks and recording
 a new final approval for the current complete source identity.

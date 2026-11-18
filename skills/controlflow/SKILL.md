@@ -1,6 +1,6 @@
 ---
 name: controlflow
-description: "Use when the user explicitly invokes $controlflow for a repository task."
+description: "Use when the user explicitly invokes $controlflow-codex:controlflow for a repository task."
 ---
 
 # ControlFlow
@@ -9,7 +9,7 @@ Carry authorized work through fresh evidence and truthful status. Native Codex
 owns execution, permissions, sandbox, review and agent lifecycle.
 Native invocation: `$controlflow-codex:<skill-name>`; aliases require host support.
 
-Maintain native `update_plan` for multi-step work when available. Restore accepted
+Maintain native `update_plan` for multi-step work when allowed. Restore accepted
 progress after resume; otherwise report textual progress. Read
 [progress](references/progress.md).
 

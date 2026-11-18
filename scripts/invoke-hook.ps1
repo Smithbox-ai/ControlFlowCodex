@@ -21,11 +21,10 @@ try {
         Publish @{systemMessage='ControlFlow INTERRUPTED. Explicit user resumption is required.'}
         exit 0
     }
-    $active=Get-ControlFlowActiveRun -RepoRoot $repoRoot -SessionId $payload.session_id
-    if ($null -eq $active) { Publish @{}; exit 0 }
-    $repoRoot=$active.state.binding.worktree_realpath
-    $runPath=$active.run_path
-    $run=Read-ControlFlowRun -RepoRoot $repoRoot -RunPath $runPath -SessionId $payload.session_id
+    $run=Get-ControlFlowActiveRun -RepoRoot $repoRoot -SessionId $payload.session_id -IgnoreManualFallback
+    if ($null -eq $run) { Publish @{}; exit 0 }
+    $repoRoot=$run.state.binding.worktree_realpath
+    $runPath=$run.run_path
     if ($Event -eq 'SessionStart') {
         $context="ControlFlow $($run.state.schema_version) task $($run.state.task_id), run $($run.state.run_id), state $($run.state.status). Reload $runPath/state.json and its contract before acting."
         if ($run.state.status -in @('INTERRUPTED','CANCELLED','PERMISSION_DENIED','CLARIFICATION','BLOCKED','PLAN_MODE','HUMAN_WAIT')) {
@@ -35,9 +34,14 @@ try {
         exit 0
     }
     if($payload.ContainsKey('permission_mode') -and $payload.permission_mode -eq 'plan') {
-        $null=Update-ControlFlowRun -RepoRoot $repoRoot -RunPath $runPath -ExpectedRevision $run.state.revision `
-            -Event @{type='stop';reason='PLAN_MODE';evidence='Native Stop callback permission_mode=plan'}
-        Publish @{systemMessage='ControlFlow PLAN_MODE: lawful turn end; task is incomplete.'}
+        if($run.state.status -ceq 'ACTIVE') {
+            $run=Update-ControlFlowRun -RepoRoot $repoRoot -RunPath $runPath `
+                -Event @{type='stop';reason='PLAN_MODE';evidence='Native Stop callback permission_mode=plan'}
+        }
+        if($run.state.status -ceq 'COMPLETED') { Publish @{}; exit 0 }
+        $decision=Get-ControlFlowStopPolicy -State $run.state -Gate $null
+        if($decision.action -cne 'LAWFUL_STOP'){throw $decision.reason}
+        Publish @{systemMessage="ControlFlow $($decision.reason): lawful turn end; task is incomplete."}
         exit 0
     }
     $gate=Test-ControlFlowGate -RepoRoot $repoRoot -RunPath $runPath -Kind Completion

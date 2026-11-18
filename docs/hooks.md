@@ -1,7 +1,7 @@
 # Native hook integration
 
-Host compatibility: Codex `0.166.0-alpha.5.1` skips bundled hooks for root
-AgentPlugin manifests. The explicit [NativeLegacy package flavor](release.md#explicit-native-compatibility-flavor-candidate)
+Codex `0.166.0-alpha.5.1` and Windows Desktop CLI `0.169.0-alpha.11.1` skip bundled
+hooks for root AgentPlugin manifests. The explicit [NativeLegacy package flavor](release.md#explicit-native-compatibility-flavor-candidate)
 uses the supported `.codex-plugin/plugin.json` loader path and bounds recursive
 skill/MCP discovery. It does not grant hook trust. Exact native review/trust and
 real callback smoke are still required; discovery alone is not callback PASS.
@@ -12,7 +12,8 @@ The supported adapter is a local PowerShell 7.4 or newer command hook;
 It consumes JSON on stdin and emits one JSON object on stdout. It does not parse
 session transcripts or intercept commit command text.
 
-Interrupt `turn_id` is optional. Mutable state, active pointers and the interrupt
+The current native Interrupt callback supplies `turn_id`. The adapter accepts
+older payloads without it. Mutable state, active pointers and the interrupt
 mailbox use readers compatible with atomic generation replacement. On Windows,
 existing files use `File.Replace`; transient sharing conflicts retry within
 200 ms and persistent failures stay visible. This does not bypass native hook
@@ -23,7 +24,9 @@ existing V3 run with matching runtime and contract versions. Existing V3 runs
 remain visibly `legacy_semantics`; a callback never creates a new legacy run. An absent
 marker leaves the session unmanaged. A corrupt marker, invalid reference, wrong
 binding, or missing identity is UNVERIFIABLE. No older v2 plan is adopted and no
-foreign session is updated.
+foreign session is updated. A manual fallback run uses the sessionless storage
+namespace. Previously saved manual runs with a native binding remain readable by
+explicit run path and are ignored by native callbacks.
 
 Markers and evidence live in the dedicated external ControlFlow state root,
 not the callback's working directory. `CONTROLFLOW_STATE_ROOT`, when configured,
@@ -53,8 +56,9 @@ If a damaged ledger cannot safely receive a new revision, the adapter returns
 the model's final wording. Fix the observation/state problem and obtain an
 explicit user decision before resuming; never label such a turn DONE.
 
-Installation and enabling a plugin do not grant hook trust. The user must review
-and trust the exact current hook definition. A hook edit may require trust again.
+Installation and enabling a plugin do not grant hook trust. Review the current
+hooks in CLI `/hooks` or Desktop Settings > Hooks. Native Codex may require a
+new review when bundled files change even if the hook declarations are unchanged.
 The plugin does not change global feature flags, sandbox rules, permissions, or
 trust lists. Missing/untrusted/disabled hooks require `-ManualFallback` at run
 creation and a direct completion-gate call before final claims; report the weaker
@@ -67,6 +71,17 @@ CLI/Desktop callback evidence must record the enabled definition, callback event
 session binding, native continuation, lawful stop, and interruption behavior.
 An E2E run using manual fallback is not proof of automatic Stop enforcement.
 
+## Plan Mode
+
+Start and save the run outside native Plan Mode. For an active run, record an
+authorized `PLAN_MODE` stop before switching, or plan in a separate native
+thread. In Codex `0.169.0-alpha.11.1`, the [Stop payload builder](https://github.com/openai/codex/blob/rust-v0.169.0-alpha.11.1/codex-rs/core/src/hook_runtime.rs#L431-L443)
+uses the [approval policy](https://github.com/openai/codex/blob/rust-v0.169.0-alpha.11.1/codex-rs/core/src/hook_runtime.rs#L1076-L1084)
+for `permission_mode`; it does not identify collaboration Plan Mode. If a host
+explicitly reports `permission_mode=plan`, the adapter pauses only an active run.
+It preserves an existing lawful stop and leaves completed runs untouched in
+that callback. Normal completion checks still detect changed evidence.
+
 Sources: [Codex hooks](https://learn.chatgpt.com/docs/hooks) and
 [portable plugin packaging](https://developers.openai.com/plugins/build/plugins).
 
@@ -78,9 +93,12 @@ without a trusted receipt verifier. Hashes, local human=true and app-server
 serverRequest/resolved do not authenticate consent. Repeated valid completed Stop
 callbacks are idempotent; stale completion becomes BLOCKED without reopening.
 
-All matching native hooks are additive and may execute concurrently. Trust binds
-the exact definition; changed hooks require native review. No trust is modified by
-this package. Cloud orchestration does not support local/plugin command hooks.
+All matching native hooks are additive and may execute concurrently. Register
+ControlFlow lifecycle hooks once per session. Copying the plugin handler into
+user or project hooks can contend for the same ledger, and native Stop gives
+`continue: false` precedence over other hooks' continuation requests. A Stop
+continuation prompt is generated by the host and carries no user decision.
+Cloud orchestration does not support local/plugin command hooks.
 Adapter tests simulate payloads and do not prove actual host callback dispatch.
 
 Pending human targets and first stop source persist across other stop reasons.

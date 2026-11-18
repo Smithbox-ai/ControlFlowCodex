@@ -1,6 +1,6 @@
 . "$PSScriptRoot/core-test-helpers.ps1"
 LoadCore
-function Hook([string]$Repo,[string]$Session,[string]$Event='Stop',[string]$PermissionMode='on-request') {
+function Hook([string]$Repo,[string]$Session,[string]$Event='Stop',[string]$PermissionMode='default') {
     $psi=[Diagnostics.ProcessStartInfo]::new()
     $psi.FileName=@(Get-Command pwsh -CommandType Application)[0].Source
     $psi.UseShellExecute=$false;$psi.CreateNoWindow=$true
@@ -11,7 +11,10 @@ function Hook([string]$Repo,[string]$Session,[string]$Event='Stop',[string]$Perm
         $elapsed=[Diagnostics.Stopwatch]::StartNew()
         [void]$process.Start()
         $out=$process.StandardOutput.ReadToEndAsync();$err=$process.StandardError.ReadToEndAsync()
-        $process.StandardInput.WriteLine((@{session_id=$Session;cwd=$Repo;turn_id='fixture-turn';stop_hook_active=$false;permission_mode=$PermissionMode}|ConvertTo-Json -Compress))
+        $payload=@{session_id=$Session;cwd=$Repo;hook_event_name=$Event;model='fixture-model';transcript_path=$null;permission_mode=$PermissionMode}
+        if($Event -eq 'SessionStart'){$payload.source='resume'}else{$payload.turn_id='fixture-turn'}
+        if($Event -eq 'Stop'){$payload.stop_hook_active=$false;$payload.last_assistant_message=$null}
+        $process.StandardInput.WriteLine(($payload|ConvertTo-Json -Compress))
         $process.StandardInput.Close()
         # Match the existing native hook budgets, including the strict Interrupt bound.
         $deadline=switch($Event){'Interrupt'{3000};'SessionStart'{20000};default{30000}}

@@ -1,13 +1,15 @@
 ---
 name: controlflow-plan
-description: "Use when the user explicitly invokes $controlflow-plan to persist a repository task contract after native planning."
+description: "Use when the user explicitly invokes $controlflow-codex:controlflow-plan to persist a repository task contract."
 ---
 
 # ControlFlow Plan
 
-Persist a durable execution contract after native `/plan` or the explicit
-`$controlflow` entry. Native planning gathers context; this skill saves the
-verified intent. Read the user request and current repository first.
+Persist the accepted intent in a durable execution contract. Reuse the native
+plan if one exists. Read the request and repository first. Keep planning
+read-only while native Plan Mode is active. Create the contract and run after
+leaving that mode, using the execution thread's actual session ID if a fresh
+thread was started. A native mode switch does not supply a required design receipt.
 
 Restore the accepted milestones and verified progress in available native
 `update_plan`, following [progress](../controlflow/references/progress.md).
@@ -41,7 +43,7 @@ Do not duplicate machine-critical JSON in prose.
 
 Run `scripts/validate-contract.ps1 -Path <contract>`. Start the session-bound run
 before edits, following the [execution reference](../controlflow/references/execution.md).
-Full profiles hand off to `$controlflow-verify` before implementation. Capture
+Full profiles follow [Verify](../controlflow-verify/SKILL.md) before implementation. Capture
 initial user index, worktree, and untracked content separately; dirty paths are
 not exemptions. Overlap requires an isolated worktree or concrete user decision.
 
@@ -63,8 +65,10 @@ Keep compact artifacts outside source as immutable receipts using existing IDs.
 Read [v4 workflow](../../docs/v4-runtime.md).
 
 Gather bounded context: goal/non-goals, user decisions, unknowns, code refs
-and invariants. Follow native instruction precedence and applicable repository
-guidance for the affected paths. Load an available domain skill when it applies.
+and invariants. Follow native instruction precedence and applicable repository guidance for the
+affected paths. Check nested `AGENTS.md` and applicable overrides for affected
+paths outside the host's initial instruction discovery chain. Load an available
+domain skill when it applies.
 Use context `policy_refs` for actionable rules with their source, scope, and
 version or revision when known.
 Record material conflicts under context `unknowns`, citing both rules and the
