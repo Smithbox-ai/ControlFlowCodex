@@ -128,6 +128,13 @@ an unrelated failure does not establish that the regression detects the defect.
 If a reliable old-defect control is unavailable, record the evidence gap instead
 of claiming the bugfix is proven. Mutation does not replace that regression.
 
+When consequential work also changes tests or verifier rules, independently
+inspect changed assertions and checks against the original QA expectations.
+Use an appropriate unchanged baseline check, owner-maintained check, or
+independent negative control alongside legitimate test additions and updates.
+Reuse existing property or differential tests when they exercise the relevant
+invariant or comparison.
+
 QA recheck compares the unchanged expected results with actual captured output,
 fault dispositions and limitations. The packet retains skipped/unsupported work,
 survivors and per-check observations. Reviewers judge semantic quality; the

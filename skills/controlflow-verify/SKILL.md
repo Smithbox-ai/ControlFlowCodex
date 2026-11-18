@@ -50,7 +50,8 @@ substitutes for verifier confidence.
 ## Six questions
 
 1. Can execution start from repository evidence?
-2. Are APIs/files/dependencies/schema assumptions verified against the repo?
+2. Are APIs/files/dependencies/schema assumptions and applicable repository
+   and domain rules verified against the current sources for affected paths?
 3. Are failure, migration, and rollback paths sufficient?
 4. Does the plan define meaningful executable checks for code targets and the
    required artifact-bound review/decision paths for agent/human targets? Mixed
@@ -67,6 +68,11 @@ are not evidence.
 
 Apply auth, concurrency, data-integrity, and operability scrutiny only when the
 task touches them — not as a fixed checklist for every plan.
+
+Resolve apparent rule conflicts using native precedence and source scope.
+For an unresolved material conflict, cite both rules and the behavior at risk,
+withhold preflight, and obtain the specific decision or replan before owned
+edits. If external approval or permission is required, use the native path.
 
 For new code-judged QA, validate the `mutation_assessment` decision, its risk
 rationale, bounded method and scenario/check bindings against

@@ -5,8 +5,8 @@ try {
     File $r 'src/guard.cs' "return amount <= limit;`n"
     File $r 'src/other.cs' 'unrelated'
     $reportPath=Join-Path $r 'report.json'
-    function Report($Files,$ProjectRoot=$null) {
-        $report=@{schemaVersion='1';files=$Files}
+    function Report($Files,$ProjectRoot=$null,$SchemaVersion='1') {
+        $report=@{schemaVersion=$SchemaVersion;files=$Files}
         if($null -ne $ProjectRoot){$report.projectRoot=$ProjectRoot}
         [IO.File]::WriteAllText($reportPath,($report|ConvertTo-Json -Depth 30))
     }
@@ -23,6 +23,15 @@ try {
     Report @{'src/guard.cs'=(Entry "return amount <= limit;`n")}
     $q=BoundReport
     Assert ($q.status -ceq 'PASS' -and $q.scope_verified -and $q.acceptance_status -ceq 'PASS') 'MatchingCurrentSourceAccepted'
+    foreach($version in @('1.0','2','2.0.0')){
+        Report @{'src/guard.cs'=(Entry "return amount <= limit;`n")} -SchemaVersion $version
+        Assert ((BoundReport).status -ceq 'PASS') ('RecognizedMutationReportVersion:'+ $version)
+    }
+    foreach($version in @('3.0.0','999','1.00',1,$null)){
+        Report @{'src/guard.cs'=(Entry "return amount <= limit;`n")} -SchemaVersion $version
+        $q=BoundReport
+        Assert ($q.status -ceq 'ERROR' -and $q.error -ceq 'UNSUPPORTED_MUTATION_REPORT_VERSION') ('UnrecognizedMutationReportVersion:'+ $version)
+    }
     Report @{'src/guard.cs'=(Entry 'old source')}
     Assert ((BoundReport).error -like 'MUTATION_REPORT_SOURCE_MISMATCH:*') 'OldSourceRejected'
     Report @{'src/guard.cs'=(Entry "return amount <= limit;`n")}

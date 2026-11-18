@@ -11,6 +11,29 @@ $scratch=Join-Path ([IO.Path]::GetTempPath()) ('cf-release-grading-'+[guid]::New
 try {
     $cases=@(Get-E2ECases -RepoRoot $repo -Suite Release)
     if(-not $DiagnosticOnly){
+    $configCase=@{id='typed-config-grader';tier='MEDIUM';files=@{'config.json'='{"schema":1,"enabled":false}'};expected=@{'config.json'='{"schema":2,"enabled":true}'};reference=@{};oracle='';commit='none'}
+    $configFixture=New-E2EFixture -Case $configCase -Directory (Join-Path $scratch 'typed-config')
+    $configPath=Join-Path $configFixture.root 'config.json'
+    Write-E2EText $configPath '{"schema":"2","enabled":"True"}'
+    $wrongTypes=Test-E2EOutcome -Case $configCase -Fixture $configFixture
+    Assert (-not $wrongTypes.pass -and $wrongTypes.failures -contains 'content:config.json') 'config grading rejects strings in place of numbers and booleans'
+    $configCase.expected['config.json']='{"schema":2,"enabled":true,"options":{"labels":["A","B"]}}'
+    Write-E2EText $configPath '{"options":{"labels":["A","B"]},"enabled":true,"schema":2}'
+    Assert (Test-E2EOutcome -Case $configCase -Fixture $configFixture).pass 'config grading compares nested JSON values regardless of object key order'
+    Write-E2EText $configPath '{"options":{"labels":["A","B"]},"enabled":true,"schema":20e-1}'
+    Assert (Test-E2EOutcome -Case $configCase -Fixture $configFixture).pass 'config grading accepts equivalent JSON number representations'
+    Write-E2EText $configPath '{"options":{"labels":["B","A"]},"enabled":true,"schema":2}'
+    Assert (-not (Test-E2EOutcome -Case $configCase -Fixture $configFixture).pass) 'config grading preserves array ordering'
+    $configCase.expected['config.json']='{"at":"2026-01-01T00:00:00Z","info":null}'
+    Write-E2EText $configPath '{"at":"2026-01-01T00:00:00.000Z","info":null}'
+    Assert (-not (Test-E2EOutcome -Case $configCase -Fixture $configFixture).pass) 'config grading preserves timestamp-shaped strings as strings'
+    Write-E2EText $configPath '{"at":"2026-01-01T00:00:00Z","other":null}'
+    Assert (-not (Test-E2EOutcome -Case $configCase -Fixture $configFixture).pass) 'config grading distinguishes a null property from an absent property'
+    Write-E2EText $configPath '{"at":"unexpected","at":"2026-01-01T00:00:00Z","info":null}'
+    Assert (-not (Test-E2EOutcome -Case $configCase -Fixture $configFixture).pass) 'config grading rejects duplicate object properties'
+    $configCase.expected['config.json']='{"count":9007199254740993}'
+    Write-E2EText $configPath '{"count":9007199254740992.0}'
+    Assert (-not (Test-E2EOutcome -Case $configCase -Fixture $configFixture).pass) 'config grading compares numbers without floating-point rounding'
     foreach($case in @($cases|Where-Object tier -eq 'LARGE')){
         $fixture=New-E2EFixture -Case $case -Directory (Join-Path $scratch $case.id)
         Set-E2EReferenceOutcome -Case $case -Fixture $fixture

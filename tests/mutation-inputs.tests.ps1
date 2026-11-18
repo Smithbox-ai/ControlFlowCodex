@@ -1,11 +1,15 @@
+param([switch]$CommitRaceOnly)
 . "$PSScriptRoot/v4-test-helpers.ps1"
 LoadCore
 $module=Get-TestControlFlowModule
+foreach($mode in @('required','none')){
+if($CommitRaceOnly -and $mode -ceq 'none'){continue}
 $r=NewFixture
 try {
     $p=V4Contract $r final
     File $r '.cache/guard.cs' 'original guard'
     $v=Get-Content -LiteralPath $p -Raw|ConvertFrom-Json -AsHashtable
+    $v.commit.mode=$mode
     $v.work_type='docs';$v.workflow=@{profile='light';required_artifacts=@('review-packet')};$v.review_policy.human_design=$false
     $v.quality_profiles=@(@{id='mutation';kind='mutation';required=$true;capability='available';check_ids=@('check-1')})
     $v.checks[0].report=@{format='stryker-json';path='.cache/mutation.json';tool='fixture';version='1';scope=@('.cache/guard.cs');config='inline';baseline='initial';exclusions=@();minimum_score=80}
@@ -17,9 +21,31 @@ $report=@{schemaVersion='1';files=@{'.cache/guard.cs'=@{source=$source;language=
     [IO.File]::WriteAllText($p,($v|ConvertTo-Json -Depth 40))
     $run=Start-ControlFlowRun $r $p -ManualFallback;$rp=$run.run_path
     Update-ControlFlowRun $r $rp @{type='preflight';status='APPROVED'}|Out-Null
+    if($mode -ceq 'required'){File $r 'owned.txt' 'owned change ready for commit'}
     $capture=Capture-ControlFlowCheck $r $rp check-1
     Update-ControlFlowRun $r $rp @{type='coverage';criterion_id='C1';check_ids=@('check-1')}|Out-Null
     Artifact $r $rp review-packet|Out-Null
+    if($mode -ceq 'required'){
+        $before=Read-ControlFlowRun $r $rp
+        & $module {
+            $script:OriginalCandidate=(Get-Item Function:New-CFCandidate).ScriptBlock
+            function script:New-CFCandidate($RepoRoot,$RunPath,$OwnedPaths,$State,$SourceDigest,$ContractDigest){
+                $candidate=& $script:OriginalCandidate @PSBoundParameters
+                [IO.File]::WriteAllText((Join-Path $RepoRoot '.cache/guard.cs'),'changed during candidate construction')
+                return $candidate
+            }
+        }
+        try {$gate=Test-ControlFlowGate $r $rp Commit}
+        finally {& $module {Set-Item Function:script:New-CFCandidate $script:OriginalCandidate}}
+        Assert ([IO.File]::ReadAllText((Join-Path $r '.cache/guard.cs')) -ceq 'changed during candidate construction') 'CommitRaceMutatedInputAfterCandidateConstruction'
+        Assert ($gate.status -ceq 'FAIL' -and 'CHECK_INPUT_CHANGED_DURING_GATE:check-1' -cin $gate.reasons) 'ConcurrentIgnoredInputChangeCannotAuthorizeCommit'
+        $after=Read-ControlFlowRun $r $rp
+        Assert ($after.state.revision -eq $before.state.revision -and $null -eq $after.evidence.candidate) 'StaleCommitCandidateNeverPublished'
+        File $r '.cache/guard.cs' 'original guard'
+        $stable=Test-ControlFlowGate $r $rp Commit
+        Assert ($stable.status -ceq 'PASS' -and $null -ne (Read-ControlFlowRun $r $rp).evidence.candidate) 'StableCommitGatePublishesCandidate'
+        continue
+    }
     Assert ((Test-ControlFlowGate $r $rp Completion).status -ceq 'PASS') 'IgnoredMutationTargetInitiallyPasses'
     File $r '.cache/guard.cs' 'changed after capture'
     $gate=Test-ControlFlowGate $r $rp Completion
@@ -46,6 +72,7 @@ $report=@{schemaVersion='1';files=@{'.cache/guard.cs'=@{source=$source;language=
     $check=@{inputs=@('owned.txt','.cache/guard.cs');report=@{format='stryker-json';scope=@('.cache/guard.cs')}}
     $paths=@(& $module {param($Check) Get-CFCheckInputPaths $Check} $check)
     Assert ($paths.Count -eq 2) 'ExplicitAndAutomaticInputsDeduplicate'
-    Write-Output "mutation-inputs: $script:Count assertions passed"
 } finally {RemoveFixture $r}
+}
+Write-Output "mutation-inputs: $script:Count assertions passed"
 $global:LASTEXITCODE=0

@@ -169,5 +169,16 @@ foreach ($status in @('ERROR', 'FAIL', 'TIMEOUT', 'STALE', 'NOT_RUN', 'PASS',
 Assert-Contains $readme 'mutation_assessment' 'README introduces explicit sensitivity decision'
 Assert-Contains $readme 'old defect' 'README states regression negative control'
 
+# --- applicable operating rules, live acceptance, and bounded repair ---
+Assert-Contains $plan 'policy_refs' 'record source references for applicable domain and repository rules'
+Assert-Contains $verify 'unresolved material conflict' 'reject preflight when applicable rules still conflict'
+Assert-Contains $execution 'normal entry point' 'test changed user-facing behavior through the real entry point'
+Assert-Contains $execution 'NOT_RUN' 'report unavailable startup or user-path evidence as unexecuted'
+Assert-Contains $review 'observed outcome' 'distinguish evidence from outstanding user acceptance'
+Assert-Contains $execution 'three repair rounds' 'bound retries for the same unresolved cause during execution'
+Assert-Contains $execution 'required flaky check' 'preserve required checks even when intermittently failing'
+Assert-Contains $evidence 'independently inspect changed assertions' 'review consequential test changes against the original expectation'
+Assert-Contains $evidence 'independent negative control' 'use evidence outside the changed assertions'
+
 Write-Output "VALID skill behavior contract"
 

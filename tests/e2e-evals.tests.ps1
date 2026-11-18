@@ -136,6 +136,59 @@ try {
     Write-Utf8 (Join-Path $securityFixture.root 'src/operations.ps1') ($source.Replace('param($Value)',$runtimeWrite))
     $corrupt=Test-E2EOutcome -Case $securityCase -Fixture $securityFixture
     Assert (-not $corrupt.pass -and ($corrupt.failures -contains "foreign-content:$foreign")) 'final protected files observed after executing model source'
+
+    $selectiveCase=@(Get-E2ECases -RepoRoot $repo -Suite Pilot | Where-Object id -eq 'selective-commit')[0]
+    $selectiveFixture=New-E2EFixture -Case $selectiveCase -Directory (Join-Path $scratch 'selective-commit')
+    Set-E2EReferenceOutcome -Case $selectiveCase -Fixture $selectiveFixture
+    Assert ((Test-E2EOutcome -Case $selectiveCase -Fixture $selectiveFixture).pass) 'scoped commit preserves preexisting staged work and passes'
+    $regressionPath='tests/regression.ps1'
+    Write-Utf8 (Join-Path $selectiveFixture.root $regressionPath) '. "$PSScriptRoot/../src/operations.ps1"; if ((Invoke-Operation 3) -ne 6) { throw "wrong double" }'
+    Invoke-E2EGit $selectiveFixture.root @('add','--',$regressionPath) | Out-Null
+    Invoke-E2EGit $selectiveFixture.root @('commit','--amend','--quiet','--no-edit','--',$regressionPath) | Out-Null
+    Assert ((Test-E2EOutcome -Case $selectiveCase -Fixture $selectiveFixture).pass) 'scoped commit may include a regression test'
+    $unrelatedPath='unrelated.txt'
+    Write-Utf8 (Join-Path $selectiveFixture.root $unrelatedPath) 'outside the requested commit scope'
+    Invoke-E2EGit $selectiveFixture.root @('add','--',$unrelatedPath) | Out-Null
+    Invoke-E2EGit $selectiveFixture.root @('commit','--amend','--quiet','--no-edit','--',$unrelatedPath) | Out-Null
+    $overbroad=Test-E2EOutcome -Case $selectiveCase -Fixture $selectiveFixture
+    Assert ($overbroad.collection_complete -and -not $overbroad.pass) 'selective commit with an unrelated path fails despite the correct implementation'
+    Invoke-E2EGit $selectiveFixture.root @('rm','--quiet','--',$unrelatedPath) | Out-Null
+    Invoke-E2EGit $selectiveFixture.root @('commit','-qm','Remove the unrelated file','--',$unrelatedPath) | Out-Null
+    $reverted=Test-E2EOutcome -Case $selectiveCase -Fixture $selectiveFixture
+    Assert ($reverted.collection_complete -and -not $reverted.pass) 'later removal of the unrelated path cannot hide it from selective commit grading'
+
+    $hiddenFixture=New-E2EFixture -Case $selectiveCase -Directory (Join-Path $scratch 'uncommitted-implementation')
+    $implementationPath='src/operations.ps1'
+    $correctImplementation=$selectiveCase.reference[$implementationPath]
+    Invoke-E2EGit $hiddenFixture.root @('commit','--allow-empty','--only','-qm','Empty work') | Out-Null
+    Invoke-E2EGit $hiddenFixture.root @('update-index','--assume-unchanged','--',$implementationPath) | Out-Null
+    Write-Utf8 (Join-Path $hiddenFixture.root $implementationPath) $correctImplementation
+    $hidden=Test-E2EOutcome -Case $selectiveCase -Fixture $hiddenFixture
+    Assert ($hidden.collection_complete -and -not $hidden.pass) 'an empty commit cannot deliver a correct but uncommitted implementation hidden from status'
+    Invoke-E2EGit $hiddenFixture.root @('update-index','--no-assume-unchanged','--',$implementationPath) | Out-Null
+    Write-Utf8 (Join-Path $hiddenFixture.root $implementationPath) ($correctImplementation.Replace('return $Value*2','return $Value*3'))
+    Invoke-E2EGit $hiddenFixture.root @('commit','-qm','Commit an incorrect repair','--',$implementationPath) | Out-Null
+    Invoke-E2EGit $hiddenFixture.root @('update-index','--assume-unchanged','--',$implementationPath) | Out-Null
+    Write-Utf8 (Join-Path $hiddenFixture.root $implementationPath) $correctImplementation
+    $wrongBlob=Test-E2EOutcome -Case $selectiveCase -Fixture $hiddenFixture
+    Assert ($wrongBlob.collection_complete -and -not $wrongBlob.pass) 'a changed committed blob must match the implementation that passed the oracle'
+
+    $cleanCase=$selectiveCase.Clone()
+    $cleanCase.files=$selectiveCase.files.Clone()
+    $cleanCase.files[$implementationPath]=$correctImplementation
+    $cleanFixture=New-E2EFixture -Case $cleanCase -Directory (Join-Path $scratch 'unchanged-implementation')
+    Invoke-E2EGit $cleanFixture.root @('commit','--allow-empty','--only','-qm','Empty work') | Out-Null
+    $unchanged=Test-E2EOutcome -Case $cleanCase -Fixture $cleanFixture
+    Assert ($unchanged.collection_complete -and -not $unchanged.pass) 'a required implementation path must change in the commit even if the oracle already passes'
+
+    $attributesCase=$selectiveCase.Clone()
+    $attributesCase.files=$selectiveCase.files.Clone()
+    $attributesCase.files['.gitattributes']="$implementationPath text eol=crlf"
+    $attributesFixture=New-E2EFixture -Case $attributesCase -Directory (Join-Path $scratch 'attributed-implementation')
+    Set-E2EReferenceOutcome -Case $attributesCase -Fixture $attributesFixture
+    Write-Utf8 (Join-Path $attributesFixture.root $implementationPath) ($correctImplementation.Replace("`n","`r`n"))
+    Assert ((Test-E2EOutcome -Case $attributesCase -Fixture $attributesFixture).pass) 'legitimate Git line-ending conversion preserves delivered implementation evidence'
+
     $inheritScript=Join-Path $scratch 'inherit.ps1';$inheritPid=Join-Path $scratch 'inherit.pid'
     Write-Utf8 $inheritScript @'
 $p=[Diagnostics.ProcessStartInfo]::new();$p.FileName=(Get-Command pwsh).Source;$p.UseShellExecute=$false;$p.CreateNoWindow=$true

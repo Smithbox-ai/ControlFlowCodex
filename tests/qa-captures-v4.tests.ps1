@@ -20,10 +20,13 @@ $xml=switch -CaseSensitive($mode){
 '@
 $v.checks+=@(
  @{id='build';command="if(Test-Path -LiteralPath '.cache/build-fail'){throw 'fixture build failed'}; if(-not (Test-Path -LiteralPath 'owned.txt' -PathType Leaf)){throw 'fixture source missing'}";working_directory='.';criteria=@('C1');inputs=@('.cache/build-input')},
- @{id='diff';command='git diff --check';working_directory='.';criteria=@('C1')}
+ @{id='diff';command='git diff --check';working_directory='.';criteria=@('C1')},
+ @{id='optional-smoke';command="if(Test-Path -LiteralPath '.cache/smoke-fail'){throw 'optional fixture smoke failed'}";working_directory='.';criteria=@();inputs=@('.cache/smoke-input')}
 )
+$v.review_policy.human_final=$true
 [IO.File]::WriteAllText($p,($v|ConvertTo-Json -Depth 40))
 File $r '.cache/build-input' 'initial input'
+File $r '.cache/smoke-input' 'initial smoke input'
 $run=Start-ControlFlowRun $r $p -ManualFallback;$rp=$run.run_path
 $ctx=Artifact $r $rp context;$design=Artifact $r $rp design @($ctx);ReviewArtifact $r $rp $design|Out-Null
 $qa=Artifact $r $rp qa-plan @($design) @{scenarios=@(@{id='S1';inputs='fixture';expected='External requested behavior';expectation_source='user:implement';criterion_refs=@('C1');check_refs=@('build','diff','check-1');negative='Invalid input fails';boundary='Empty input'});mutation_assessment=@{decision='skip';method='none';rationale='This fixture tests mixed process/report capture freshness; source mutation sensitivity is outside its scope';scope=@();criterion_refs=@();check_refs=@()}}
@@ -58,9 +61,59 @@ Assert ($build.status -ceq 'PASS' -and $diff.status -ceq 'PASS' -and -not $build
 $recheck=$null
 try{$recheck=Artifact $r $rp qa-recheck @($qa,$impl) $payload}catch{if($_.Exception.Message -cne 'QA_EVIDENCE_MISSING'){throw}}
 Assert ($null -ne $recheck) 'FreshPlainAndReportCapturesSatisfyQARecheck'
-Artifact $r $rp review-packet @($recheck)|Out-Null
+$packet=Artifact $r $rp review-packet @($recheck)
+ReviewArtifact $r $rp $packet human APPROVED manual final|Out-Null
 Update-ControlFlowRun $r $rp @{type='coverage';criterion_id='C1';check_ids=@('build','diff','check-1')}|Out-Null
 Assert ((Test-ControlFlowGate $r $rp Completion).status -ceq 'PASS') 'MixedPlainAndReportQACapturesPermitCompletion'
+
+File $r 'owned.txt' 'new authorized source without recapture'
+Assert (-not (Get-ControlFlowPlanningContext $r $rp).artifacts.ContainsKey('qa-recheck')) 'ChangedSourceStalesQARecheckInPlanningContext'
+Throws {Artifact $r $rp review-packet @($recheck) -Revision 2} 'SourceStaleQARecheckCannotSupportNewPacket'
+File $r 'owned.txt' 'authorized implementation'
+File $r '.cache/build-input' 'new ignored required input without recapture'
+Assert (-not (Get-ControlFlowPlanningContext $r $rp).artifacts.ContainsKey('qa-recheck')) 'ChangedIgnoredQAInputStalesRecheckInPlanningContext'
+Throws {Artifact $r $rp review-packet @($recheck) -Revision 2} 'InputStaleQARecheckCannotSupportNewPacket'
+Throws {ReviewArtifact $r $rp $packet human APPROVED manual final} 'InputStaleQARecheckCannotSupportApproval'
+File $r '.cache/build-input' 'changed input'
+
+$recapture=Capture-ControlFlowCheck $r $rp build
+Assert ($recapture.status -ceq 'PASS' -and $recapture.capture_id -cne $build.capture_id -and $recapture.source_after -ceq $build.source_after) 'RecaptureHasSameSourceAndDistinctEvidence'
+$gate=Test-ControlFlowGate $r $rp Completion
+Assert ($gate.status -ceq 'FAIL' -and 'ARTIFACT_MISSING_OR_STALE:qa-recheck' -cin $gate.reasons -and 'ARTIFACT_MISSING_OR_STALE:review-packet' -cin $gate.reasons) 'SameSourceRequiredRecaptureStalesQAAndApprovedPacket'
+Throws {Artifact $r $rp review-packet @($recheck) -Revision 2} 'PacketCannotUseSupersededQARecheck'
+$recheck=Artifact $r $rp qa-recheck @($qa,$impl) $payload -Revision 2
+$packet=Artifact $r $rp review-packet @($recheck) -Revision 2
+Assert ('HUMAN_FINAL_REQUIRED' -cin (Test-ControlFlowGate $r $rp Completion).reasons) 'OldApprovalCannotApproveRefreshedPacket'
+ReviewArtifact $r $rp $packet human APPROVED manual final|Out-Null
+Assert ((Test-ControlFlowGate $r $rp Completion).status -ceq 'PASS') 'RefreshedAndApprovedReviewPasses'
+
+File $r '.cache/smoke-fail' 'force optional failure'
+$optional=Capture-ControlFlowCheck $r $rp optional-smoke
+Assert ($optional.status -ceq 'FAIL' -and $optional.source_after -ceq $recapture.source_after) 'OptionalFailureHasSameSource'
+$gate=Test-ControlFlowGate $r $rp Completion
+Assert ($gate.status -ceq 'FAIL' -and 'ARTIFACT_MISSING_OR_STALE:review-packet' -cin $gate.reasons -and 'ARTIFACT_MISSING_OR_STALE:qa-recheck' -cnotin $gate.reasons) 'OptionalFailureStalesPacketWithoutInvalidatingQA'
+Throws {ReviewArtifact $r $rp $packet human APPROVED manual final} 'StalePacketCannotReceiveNewApproval'
+$negative=ReviewArtifact $r $rp $packet agent UNKNOWN manual C1
+Assert ($negative.evidence.events[-1].verdict -ceq 'UNKNOWN' -and $negative.state.status -ceq 'ACTIVE') 'NegativeReviewCanDocumentCaptureDrift'
+$packet=Artifact $r $rp review-packet @($recheck) -Revision 3
+$saved=Get-Content -LiteralPath (Join-Path $rp $packet.path) -Raw|ConvertFrom-Json -AsHashtable
+$summary=@($saved.evidence_summary|Where-Object {$_.check_id -ceq 'optional-smoke'})
+Assert ($summary.Count -eq 1 -and $summary[0].status -ceq 'FAIL') 'RefreshedPacketDisclosesOptionalFailure'
+ReviewArtifact $r $rp $packet human APPROVED manual final|Out-Null
+Assert ((Test-ControlFlowGate $r $rp Completion).status -ceq 'PASS') 'DisclosedOptionalFailureRemainsOptional'
+
+[IO.File]::Delete((Join-Path $r '.cache/smoke-fail'))
+$optional=Capture-ControlFlowCheck $r $rp optional-smoke
+$packet=Artifact $r $rp review-packet @($recheck) -Revision 4
+ReviewArtifact $r $rp $packet human APPROVED manual final|Out-Null
+$gate=Test-ControlFlowGate $r $rp Completion
+Assert ($optional.status -ceq 'PASS' -and $gate.status -ceq 'PASS') 'OptionalPassCanBeReviewed'
+File $r '.cache/smoke-input' 'changed ignored smoke input'
+$gate=Test-ControlFlowGate $r $rp Completion
+Assert ($gate.source_digest -ceq $optional.source_after -and 'ARTIFACT_MISSING_OR_STALE:review-packet' -cin $gate.reasons -and 'ARTIFACT_MISSING_OR_STALE:qa-recheck' -cnotin $gate.reasons) 'ChangedIgnoredOptionalInputStalesReviewedPass'
+$packet=Artifact $r $rp review-packet @($recheck) -Revision 5
+ReviewArtifact $r $rp $packet human APPROVED manual final|Out-Null
+Assert ((Test-ControlFlowGate $r $rp Completion).status -ceq 'PASS') 'ReviewedStaleOptionalResultRemainsOptional'
 Write-Output "qa-captures-v4: $script:Count assertions passed"
 }finally{RemoveFixture $r}
 $global:LASTEXITCODE=0

@@ -180,7 +180,8 @@ evidence. It does not rewrite historical artifacts or change V3 semantics.
 
 Supported count parsing is deliberately narrow: one JUnit testsuite with direct
 testcase children and matching summary counts; NUnit 3 test-run with matching
-case/result counts and nonzero asserts; Stryker JSON mutant status counts. Unknown
+case/result counts and nonzero asserts; Stryker JSON mutant status counts for
+recognized schema versions in major 1 and 2. Unknown
 shapes/statuses fail closed. JUnit counts cases but cannot establish assertions.
 The JUnit subset accepts optional case `status="run"` and `result="completed"`
 or `result="skipped"` consistent with its skipped child; other explicit execution
@@ -224,8 +225,20 @@ They do not establish test counts or assertions. A check that declares a `report
 also requires a recognized passing report and saved raw bytes; QA does not waive
 that requirement. Test-count assurance requires a declared report (or an available
 tests quality profile); do not manufacture test reports for build/diff commands.
-Review packets add
-runtime-generated evidence_summary from saved captures; prose cannot replace it.
+The runtime records the exact capture IDs in each QA recheck and includes the
+latest capture or its absence for every declared check in the review packet.
+Recapturing any QA check makes its recheck and dependent packet stale, even when
+the source and result are unchanged. Recapturing a check outside QA makes only
+the packet stale. A stale recheck cannot support a new review packet or
+approval. The packet also binds observed declared input digests for captured
+checks, including inputs outside the Git source snapshot.
+
+For stale evidence, save a new revision of each affected artifact and obtain
+any required decisions against the new packet. Reuse the approved QA plan and
+its original expectations. An active run with an older QA recheck that used
+checks without recording their capture IDs needs a fresh recheck and packet.
+Historical completed receipts remain readable, and the original receipt stays
+in the ledger.
 
 Quality profile summaries include reasons and per-check observations, keeping
 `ERROR`, `FAIL`, `TIMEOUT`, `STALE`, `NOT_RUN` and `PASS` distinct. A malformed or
@@ -245,6 +258,8 @@ indicator without an arbitrary threshold.
 Every newly saved code-judged `qa-plan` includes `payload.mutation_assessment`.
 Full human-only and light docs plans are exempt from this guard. Historic saved
 QA and V3 data remain readable; do not rewrite historical artifacts to add fields.
+Preflight also checks a saved assessment against the final contract, including
+its quality profiles.
 Choose run/skip/unsupported using the
 [test sensitivity recipe](../skills/controlflow/references/evidence.md#test-sensitivity).
 For bugfixes, plan a regression that fails on the old defect and passes on the

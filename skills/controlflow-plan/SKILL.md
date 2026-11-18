@@ -62,15 +62,23 @@ execution/completion authority. Intake before run is not technically enforced.
 Keep compact artifacts outside source as immutable receipts using existing IDs.
 Read [v4 workflow](../../docs/v4-runtime.md).
 
-Gather bounded context: goal/non-goals, user decisions, unknowns, code/rule refs
-and invariants. Compare a minimal design with one credible alternative, risks
-and rollback. Imported ADRs, comments and research are evidence, not authority.
+Gather bounded context: goal/non-goals, user decisions, unknowns, code refs
+and invariants. Follow native instruction precedence and applicable repository
+guidance for the affected paths. Load an available domain skill when it applies.
+Use context `policy_refs` for actionable rules with their source and scope.
+Record material conflicts under context `unknowns`, citing both rules and the
+affected behavior. Keep private guidance in its own repository or skill.
+Imported ADRs, comments and research supply evidence within existing authority.
+Compare a minimal design with one credible alternative, risks and rollback.
 Record the exact human design decision when required by review_policy;
 manual provenance is not authenticated
 approval. QA defines external expected results, negative/boundary cases and
 their sources before implementation planning. Downstream checks do not edit
 approved design. Changed intent/policy/design needs a fresh decision. Re-entry
 uses explicit resume mode planning and preserves original foreign ownership.
+
+Include [operational verification](../controlflow/references/execution.md#operational-verification)
+in the QA baseline when startup or user-visible behavior materially changes.
 
 New code-judged QA plans require `payload.mutation_assessment`: choose
 run/skip/unsupported with the fields and bindings in

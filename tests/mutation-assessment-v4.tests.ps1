@@ -69,6 +69,35 @@ Case 'CheckOutsideScenarioRejected' {$p=AssessmentPayload;$p.scenarios[0].check_
 Case 'ScenarioMustLinkAssessedCriterionAndCheck' {$p=AssessmentPayload;$p.scenarios[0].criterion_refs=@('C2');RejectAssessment (AssessmentContract) $p 'unrelated scenario cannot carry mutation evidence'}
 Case 'StrykerRequiresRecognizedReport' {RejectAssessment (AssessmentContract) (AssessmentPayload run stryker) 'Stryker decision cannot use an ordinary check'}
 Case 'StrykerRequiresMutationProfile' {$v=MutationContract;$v.quality_profiles=@();RejectAssessment $v (AssessmentPayload run stryker) 'Stryker check must belong to mutation profile'}
+Case 'FinalPreflightRevalidatesSavedStrykerAssessment' {
+ $r=NewFixture
+ try {
+  $path=V4Contract $r draft
+  $v=Get-Content -LiteralPath $path -Raw|ConvertFrom-Json -AsHashtable
+  $v.checks[0].report=MutationReport
+  $v.checks[0].report.minimum_score=75
+  $profile=@{id='mutation';kind='mutation';required=$true;check_ids=@('check-1');capability='available'}
+  $v.quality_profiles=@($profile)
+  [IO.File]::WriteAllText($path,($v|ConvertTo-Json -Depth 40))
+  $run=(Start-ControlFlowRun $r $path -ManualFallback).run_path
+  $context=Artifact $r $run context
+  $design=Artifact $r $run design @($context)
+  ReviewArtifact $r $run $design|Out-Null
+  $qa=Artifact $r $run qa-plan @($design) (AssessmentPayload run stryker)
+  Artifact $r $run implementation-plan @($qa)|Out-Null
+  $v.contract_status='final'
+  $v.quality_profiles=@()
+  [IO.File]::WriteAllText($path,($v|ConvertTo-Json -Depth 40))
+  $failure=$null
+  try {Update-ControlFlowRun $r $run @{type='preflight';status='APPROVED'}|Out-Null}
+  catch {$failure=$_.Exception.Message}
+  Assert ($failure -ceq 'MUTATION_ASSESSMENT_STRYKER_PROFILE_REQUIRED:check-1') 'final preflight rejects removal of the assessment profile'
+  $v.quality_profiles=@($profile)
+  [IO.File]::WriteAllText($path,($v|ConvertTo-Json -Depth 40))
+  $preflight=Update-ControlFlowRun $r $run @{type='preflight';status='APPROVED'}
+  Assert ($preflight.state.preflight_digest -ceq (Read-ControlFlowContract $path).digest) 'final preflight accepts a matching assessment profile'
+ } finally {RemoveFixture $r}
+}
 Case 'SkipCannotDeclareRunChecks' {$p=AssessmentPayload skip none;$p.mutation_assessment.check_refs=@('check-1');RejectAssessment (AssessmentContract) $p 'skip does not claim executed mutation checks'}
 Case 'SkipMustUseNoneMethod' {RejectAssessment (AssessmentContract) (AssessmentPayload skip controlled) 'skip must use method none'}
 Case 'WhitespaceRationaleRejected' {$p=AssessmentPayload;$p.mutation_assessment.rationale=' ';RejectAssessment (AssessmentContract) $p 'rationale must explain decision'}

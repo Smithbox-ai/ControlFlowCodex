@@ -111,7 +111,7 @@ function Get-CFV4ProfileSummary($Read,$ContractRead,$Source,$Profile) {
     return [ordered]@{id=$Profile.id;kind=$Profile.kind;required=$Profile.required;status=$status;capability=$Profile.capability;check_ids=$Profile.check_ids;observations=$observations;reasons=@(foreach($observation in $observations){foreach($reason in $observation.reasons){$observation.check_id+':'+$reason}})}
 }
 function Get-CFV4GateReasons($Read,$ContractRead,$Source,$Fresh,$InputDigests=$null) {
-    $c=$ContractRead.contract;$artifacts=Get-CFV4Artifacts $Read $c
+    $c=$ContractRead.contract;$artifacts=Get-CFV4Artifacts $Read $c $InputDigests -Source $Source
     if($c.contract_status -cne 'final'){'DRAFT_CANNOT_COMPLETE';return}
     try{Assert-CFV4Execution $Read $ContractRead}catch{'V4_PREFLIGHT_MISSING_OR_STALE'}
     foreach($kind in $c.workflow.required_artifacts){
@@ -120,16 +120,16 @@ function Get-CFV4GateReasons($Read,$ContractRead,$Source,$Fresh,$InputDigests=$n
     }
     if($artifacts.ContainsKey('review-packet') -and $artifacts['review-packet'].artifact.payload.open_decisions.Count -gt 0){'OPEN_PACKET_DECISIONS'}
     if($artifacts.ContainsKey('qa-plan')){foreach($scenario in $artifacts['qa-plan'].artifact.payload.scenarios){foreach($id in $scenario.check_refs){if(-not (Test-CFV4Capture $Read $ContractRead $Source $id -InputDigests $InputDigests)){('QA_CAPTURE_MISSING_OR_STALE:'+$id)}}}}
-    if($c.review_policy.human_design -and (-not $artifacts.ContainsKey('design') -or -not (Test-CFV4Review $Read $ContractRead $artifacts.design.ref human design))){'HUMAN_DESIGN_REQUIRED'}
+    if($c.review_policy.human_design -and (-not $artifacts.ContainsKey('design') -or -not (Test-CFV4Review $Read $ContractRead $artifacts.design.ref human design $artifacts $Source))){'HUMAN_DESIGN_REQUIRED'}
     foreach($req in $c.review_policy.requirements){foreach($judge in $req.judges){
         if($judge -ceq 'code'){
             $ids=@(if($req.target_id -cin @($c.criteria|ForEach-Object {$_.id})){$req.target_id}else{($c.phases|Where-Object {$_.id -ceq $req.target_id}).criteria})
             foreach($id in $ids){if(@($c.checks|Where-Object {$id -cin $_.criteria -and $Fresh.ContainsKey($_.id)}).Count -eq 0){('CODE_JUDGE_MISSING:'+$req.target_id)}}
         }else{
-            if(-not $artifacts.ContainsKey('review-packet') -or -not (Test-CFV4Review $Read $ContractRead $artifacts['review-packet'].ref $judge $req.target_id)){('JUDGE_MISSING:'+$req.target_id+':'+$judge)}
+            if(-not $artifacts.ContainsKey('review-packet') -or -not (Test-CFV4Review $Read $ContractRead $artifacts['review-packet'].ref $judge $req.target_id $artifacts $Source)){('JUDGE_MISSING:'+$req.target_id+':'+$judge)}
         }
     }}
-    if($c.review_policy.human_final -and (-not $artifacts.ContainsKey('review-packet') -or -not (Test-CFV4Review $Read $ContractRead $artifacts['review-packet'].ref human final))){'HUMAN_FINAL_REQUIRED'}
+    if($c.review_policy.human_final -and (-not $artifacts.ContainsKey('review-packet') -or -not (Test-CFV4Review $Read $ContractRead $artifacts['review-packet'].ref human final $artifacts $Source))){'HUMAN_FINAL_REQUIRED'}
     foreach($profile in $c.quality_profiles){if($profile.required){
         if((Get-CFV4ProfileCapability $c $profile) -cne 'available'){('REQUIRED_PROFILE_UNSUPPORTED:'+$profile.id)}
         foreach($id in $profile.check_ids){if(-not $Fresh.ContainsKey($id)){('PROFILE_EVIDENCE_MISSING:'+$profile.id)}}
@@ -254,29 +254,34 @@ function Test-ControlFlowGate {
                 }
             }
         }
+        $newCandidate=$null
         if($Kind -eq 'Commit' -and $reasons.Count -eq 0) {
             if($owned.Count -eq 0){$reasons.Add('NO_OWNED_CHANGES')}
-            else {
-                $candidate=New-CFCandidate $RepoRoot $RunPath $owned.ToArray() $s $source.digest $c.digest
-                $e.candidate=$candidate;$s.revision++;Publish-CFState $RunPath $s $e;$result.candidate=$candidate
-            }
+            else {$newCandidate=New-CFCandidate $RepoRoot $RunPath $owned.ToArray() $s $source.digest $c.digest}
         }
-        if($Kind -eq 'Completion' -and $reasons.Count -eq 0){
-            $finalSource=Get-CFRunSource $RepoRoot $RunPath $s
-            $finalContract=Read-ControlFlowContract $s.contract_path
-            if($finalSource.digest -cne $source.digest){$reasons.Add('SOURCE_CHANGED_DURING_GATE')}
-            if($finalContract.digest -cne $c.digest){$reasons.Add('CONTRACT_CHANGED_DURING_GATE')}
+        if($reasons.Count -eq 0 -and ($Kind -eq 'Completion' -or ($s.schema_version -ceq '4.0.0' -and $null -ne $newCandidate))){
+            if($Kind -eq 'Completion'){
+                $finalSource=Get-CFRunSource $RepoRoot $RunPath $s
+                $finalContract=Read-ControlFlowContract $s.contract_path
+                if($finalSource.digest -cne $source.digest){$reasons.Add('SOURCE_CHANGED_DURING_GATE')}
+                if($finalContract.digest -cne $c.digest){$reasons.Add('CONTRACT_CHANGED_DURING_GATE')}
+            }
             foreach($id in $inputDigests.Keys){
                 $definition=@($contract.checks|Where-Object {$_.id -ceq $id})[0]
                 if((Get-CFCheckInputDigest $RepoRoot $definition) -cne $inputDigests[$id]){$reasons.Add('CHECK_INPUT_CHANGED_DURING_GATE:'+$id)}
             }
-            $pending=Read-CFPendingInterrupt $RunPath $s
-            $ack=if($s.ContainsKey('acknowledged_interrupt_id')){$s.acknowledged_interrupt_id}else{$null}
-            if($null -ne $pending -and $pending.interrupt_id -cne $ack){$reasons.Add('INTERRUPT_PENDING')}
-            if($s.schema_version -ceq '4.0.0'){
-                $finalState=(Read-CFRunHeader $RepoRoot $RunPath $s.binding.session_id).state
-                if($finalState.revision -ne $s.revision -or $finalState.evidence_ref.path -cne $s.evidence_ref.path -or $finalState.evidence_ref.sha256 -cne $s.evidence_ref.sha256){$reasons.Add('LEDGER_CHANGED_DURING_GATE')}
+            if($Kind -eq 'Completion'){
+                $pending=Read-CFPendingInterrupt $RunPath $s
+                $ack=if($s.ContainsKey('acknowledged_interrupt_id')){$s.acknowledged_interrupt_id}else{$null}
+                if($null -ne $pending -and $pending.interrupt_id -cne $ack){$reasons.Add('INTERRUPT_PENDING')}
+                if($s.schema_version -ceq '4.0.0'){
+                    $finalState=(Read-CFRunHeader $RepoRoot $RunPath $s.binding.session_id).state
+                    if($finalState.revision -ne $s.revision -or $finalState.evidence_ref.path -cne $s.evidence_ref.path -or $finalState.evidence_ref.sha256 -cne $s.evidence_ref.sha256){$reasons.Add('LEDGER_CHANGED_DURING_GATE')}
+                }
             }
+        }
+        if($null -ne $newCandidate -and $reasons.Count -eq 0){
+            $e.candidate=$newCandidate;$s.revision++;Publish-CFState $RunPath $s $e;$result.candidate=$newCandidate
         }
         $result.input_digests=$inputDigests
         $result.reasons=@($reasons);$result.status=if($reasons.Count -eq 0){'PASS'}else{'FAIL'}

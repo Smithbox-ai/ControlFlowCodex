@@ -104,6 +104,10 @@ not prove semantic quality. Assemble the compact review-packet from saved
 evidence: behavior/invariants, diff, results, limitations, rollback and open
 decisions. Inspect its generated evidence_summary.
 
+For planned startup or user-path verification, identify the observed outcome
+and its capture or reproducible steps. List unexecuted checks with the missing
+prerequisite. Required user acceptance needs the user's actual decision.
+
 Inspect the QA `mutation_assessment` and its actual sensitivity evidence under
 [test sensitivity](../controlflow/references/evidence.md#test-sensitivity).
 For bugfixes, require the regression to fail on the old defect and pass on the

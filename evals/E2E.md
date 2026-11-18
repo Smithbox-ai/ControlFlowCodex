@@ -35,6 +35,7 @@ Hidden oracles execute behavior assertions on actual files, preserve protected
 foreign content and validate requested commit/index outcomes. Passing `echo`,
 zero assertions, unexecuted graders or a model's plausible completion statement
 cannot certify an outcome. Keep oracle expectations fixed when repairing code.
+Expected JSON is compared structurally and preserves scalar types and array order.
 
 ## Comparison and measurements
 

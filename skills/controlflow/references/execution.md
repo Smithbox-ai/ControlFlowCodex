@@ -10,7 +10,8 @@ milestones and verified status, use available `update_plan`, and update after
 meaningful milestones or plan changes. If unavailable, report textual progress.
 Progress does not replace the contract, captured evidence, or delivery gates.
 
-1. Observe the repository and user request. Use `classify-task.ps1`
+1. Observe the repository and user request. Apply the relevant rules from
+   [planning intake](../../controlflow-plan/SKILL.md#v4-planning). Use `classify-task.ps1`
    (`WorkType`, `Domain`, `ChangedFiles`, `BehaviorChange`, `CrossBoundary`,
    `ProductQuestion`, `HighRisk`) for the observed signals. New contracts/runs
    use V4. Do not downgrade an unresolved HIGH risk or tiny core/unknown change
@@ -51,7 +52,9 @@ Progress does not replace the contract, captured evidence, or delivery gates.
 5. Execute each declared check through
    `capture-check.ps1 -RepoRoot <repo> -RunPath <run> -CheckId <id>`. Read its
    actual exit/output. Review whether the check really proves the criterion;
-   record criterion coverage only then. Repair failures and recapture stale checks.
+   record criterion coverage only then. Exercise the planned user path using
+   [operational verification](#operational-verification). Use [bounded repair](#bounded-repair)
+   for failures and recapture stale checks.
 6. Consume required native generic review, repair findings, and use
    `$controlflow-review` for conformance. Save QA recheck and a current review
    packet, then obtain every required code/agent/human judge. Never alter expected
@@ -62,6 +65,32 @@ Progress does not replace the contract, captured evidence, or delivery gates.
    paths; exclude initial user staging. Rerun completion with `-CommitSha <sha>`.
    No broad staging, amend, or foreign-hunk adoption. A Git hook that changes
    source makes checks/review stale; repair and recapture.
+
+## Operational verification
+
+For a material startup or user-visible change, plan a representative scenario
+through the normal entry point. Include prerequisites, the expected observable
+result, and a relevant failure or boundary case in the existing QA baseline.
+Use the project's supported startup command and a safe, authorized environment
+and fixture. Observe readiness and exercise the affected path. Capture the
+command or steps, environment, and actual result alongside build and test evidence.
+
+When a capability, prerequisite, or authorization is missing, record the
+unexecuted verification as `NOT_RUN` in the run's evidence or limitations
+and name what is needed. Required scenarios and decisions remain outstanding.
+When user acceptance is required, present brief steps and expected results and
+record the user's actual decision through the existing human review path.
+
+## Bounded repair
+
+Retry a failed check only when a new diagnosis, targeted fix, or restored
+prerequisite makes progress plausible. Preserve failure evidence. Before
+repeating an action with side effects, verify its prior outcome and that the
+repeat is safe and authorized. After three repair rounds for the same unresolved
+cause, record a `BLOCKED` stop with evidence and the next decision or prerequisite.
+This guidance applies in manual fallback too. Obey any earlier native stop or
+runtime limit. Retain each required flaky check, investigate instability, and
+keep the gate and acceptance criteria intact.
 
 ## Proportional implementation
 

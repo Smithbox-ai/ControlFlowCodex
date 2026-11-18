@@ -104,15 +104,52 @@ function Get-ControlFlowActiveRun {
     return Read-ControlFlowRun $header.state.binding.worktree_realpath $header.run_path $SessionId
 }
 function Get-CFRunSource([string]$RepoRoot,[string]$RunPath,$State) { Get-ControlFlowSourceDigest $RepoRoot $State.baseline_commit $RunPath $State.binding.session_id }
+function Get-CFV4QACheckIds($Artifact) {
+    Get-CFUniqueSorted @($Artifact.payload.scenarios|ForEach-Object {$_.check_refs})
+}
+function Get-CFV4LatestCaptures($Read) {
+    $latest=Get-CFMap
+    foreach($capture in $Read.evidence.checks){$latest[$capture.check_id]=$capture}
+    return ,$latest
+}
+function Test-CFV4CaptureBindings($Bindings,[string[]]$CheckIds,$Latest,[switch]$Packet) {
+    if($null -eq $Bindings){return $CheckIds.Count -eq 0}
+    if($Bindings.Count -ne $CheckIds.Count){return $false}
+    for($i=0;$i -lt $CheckIds.Count;$i++){
+        $binding=$Bindings[$i];$id=$CheckIds[$i]
+        if($binding['check_id'] -cne $id){return $false}
+        $recordedId=if($Packet){if($null -ne $binding['capture']){$binding.capture['capture_id']}}else{$binding['capture_id']}
+        $currentId=if($Latest.ContainsKey($id)){$Latest[$id].capture_id}
+        if($recordedId -cne $currentId){return $false}
+    }
+    return $true
+}
+function Test-CFV4PacketInputs($Packet,$Checks,[string]$RepoRoot,$InputDigests) {
+    for($i=0;$i -lt $Checks.Count;$i++){
+        $check=$Checks[$i];$observation=$Packet.evidence_summary[$i]
+        if($null -eq $observation.capture -or -not (Test-CFCheckHasInputs $check)){continue}
+        # Older packets already carry the observed digest for passing captures.
+        $expected=if($observation.ContainsKey('input_digest')){$observation.input_digest}
+            elseif($observation.status -ceq 'PASS'){$observation.capture['input_after']}
+        if($null -eq $expected){continue}
+        try{
+            $actual=if($InputDigests.ContainsKey($check.id)){$InputDigests[$check.id]}else{Get-CFCheckInputDigest $RepoRoot $check}
+        }catch{return $false}
+        if($actual -cne $expected){return $false}
+        if($null -ne $InputDigests){$InputDigests[$check.id]=$actual}
+    }
+    return $true
+}
 function Get-CFQABindings($Contract,$Artifact) {
     $criterionIds=@(Get-CFUniqueSorted @($Artifact.payload.scenarios|ForEach-Object {$_.criterion_refs}))
-    $checkIds=@(Get-CFUniqueSorted @($Artifact.payload.scenarios|ForEach-Object {$_.check_refs}))
+    $checkIds=@(Get-CFV4QACheckIds $Artifact)
     $criteria=@(foreach($id in $criterionIds){$defs=@($Contract.criteria|Where-Object {$_.id -ceq $id});if($defs.Count -ne 1){throw 'INVALID_QA_CRITERION'};[ordered]@{id=$id;sha256=(Get-CFJsonHash $defs[0])}})
     $checks=@(foreach($id in $checkIds){$defs=@($Contract.checks|Where-Object {$_.id -ceq $id});if($defs.Count -ne 1){throw 'INVALID_QA_CHECK'};[ordered]@{id=$id;sha256=(Get-CFJsonHash $defs[0])}})
     return [ordered]@{criteria=$criteria;checks=$checks}
 }
-function Get-CFV4Artifacts($Read,$Contract) {
+function Get-CFV4Artifacts($Read,$Contract,$InputDigests=$null,$Source=$null,[switch]$AllowStaleChecks) {
     $currentContractDigest=(Read-ControlFlowContract $Read.state.contract_path).digest
+    if($null -eq $InputDigests){$InputDigests=Get-CFMap}
     $latest=Get-CFMap
     foreach($event in $Read.evidence.events){
         if($event.type -cne 'artifact' -or $event.planning_epoch_id -ne $Read.state.planning_epoch_id){continue}
@@ -120,8 +157,8 @@ function Get-CFV4Artifacts($Read,$Contract) {
         if($a.task_id -cne $Read.state.task_id -or $a.run_id -cne $Read.state.run_id -or $a.planning_epoch_id -ne $Read.state.planning_epoch_id){throw 'ARTIFACT_IDENTITY_MISMATCH'}
         $latest[$a.kind]=@{artifact=$a;ref=$event.artifact_ref;contract_digest=$event.contract_digest}
     }
-    $valid=Get-CFMap
-    foreach($kind in @('context','design','qa-plan','implementation-plan','qa-recheck','review-packet')){
+    $valid=Get-CFMap;$captures=Get-CFV4LatestCaptures $Read
+    :kind foreach($kind in @('context','design','qa-plan','implementation-plan','qa-recheck','review-packet')){
         if(-not $latest.ContainsKey($kind)){continue};$entry=$latest[$kind];$a=$entry.artifact
         if($null -ne $entry.contract_digest -and $entry.contract_digest -cne $currentContractDigest){continue}
         $promotions=@($Read.evidence.events|Where-Object {$_.type -ceq 'preflight' -and $_.planning_epoch_id -eq $Read.state.planning_epoch_id -and @($_.promoted_artifacts|Where-Object {$_.path -ceq $entry.ref.path}).Count -gt 0})
@@ -136,7 +173,28 @@ function Get-CFV4Artifacts($Read,$Contract) {
             $input=Read-CFReference $Read.run_path $inputRef
             if(-not $valid.ContainsKey($input.kind) -or $valid[$input.kind].ref.sha256 -cne $inputRef.sha256 -or $valid[$input.kind].ref.path -cne $inputRef.path){$ok=$false}
         }
-        if($ok){$valid[$kind]=$entry}
+        if(-not $ok){continue}
+        if(-not $AllowStaleChecks -and $kind -ceq 'qa-recheck'){
+            if(-not $valid.ContainsKey('qa-plan')){continue}
+            $ids=@(Get-CFV4QACheckIds $valid['qa-plan'].artifact)
+            # Completed runs from older runtimes retain their historical QA receipt.
+            if(($Read.state.status -cne 'COMPLETED' -or $a.ContainsKey('evidence_summary')) -and
+                -not (Test-CFV4CaptureBindings $a['evidence_summary'] $ids $captures)){continue}
+            if($null -ne $Source){
+                if($a.source_digest -cne $Source.digest){continue}
+                $contractRead=@{contract=$Contract;digest=$currentContractDigest}
+                foreach($id in $ids){
+                    try{$fresh=Test-CFV4Capture $Read $contractRead $Source $id -InputDigests $InputDigests}catch{$fresh=$false}
+                    if(-not $fresh){continue kind}
+                }
+            }
+        }
+        if(-not $AllowStaleChecks -and $kind -ceq 'review-packet'){
+            $ids=@($Contract.checks|ForEach-Object {$_.id})
+            if(-not (Test-CFV4CaptureBindings $a['evidence_summary'] $ids $captures -Packet)){continue}
+            if(-not (Test-CFV4PacketInputs $a $Contract.checks $Read.state.binding.worktree_realpath $InputDigests)){continue}
+        }
+        $valid[$kind]=$entry
     }
     return ,$valid
 }
@@ -144,14 +202,19 @@ function Get-ControlFlowPlanningContext {
     param([string]$RepoRoot,[string]$RunPath)
     $read=Read-ControlFlowRun $RepoRoot $RunPath;$c=Read-ControlFlowContract $read.state.contract_path
     if($read.state.schema_version -cne '4.0.0' -or $c.contract.schema_version -cne '4.0.0'){throw 'V4_REQUIRED'}
-    $refs=Get-CFMap;$artifacts=Get-CFV4Artifacts $read $c.contract
+    $source=Get-CFRunSource $RepoRoot $RunPath $read.state
+    $refs=Get-CFMap;$artifacts=Get-CFV4Artifacts $read $c.contract -Source $source
     foreach($kind in $artifacts.Keys){$refs[$kind]=$artifacts[$kind].ref}
-    return @{task_id=$read.state.task_id;run_id=$read.state.run_id;planning_epoch_id=$read.state.planning_epoch_id;source_digest=(Get-CFRunSource $RepoRoot $RunPath $read.state).digest;intent_digest=(Get-CFIntentDigest $c.contract);policy_digest=(Get-CFPolicyDigest $c.contract);contract_digest=$c.digest;artifacts=$refs}
+    return @{task_id=$read.state.task_id;run_id=$read.state.run_id;planning_epoch_id=$read.state.planning_epoch_id;source_digest=$source.digest;intent_digest=(Get-CFIntentDigest $c.contract);policy_digest=(Get-CFPolicyDigest $c.contract);contract_digest=$c.digest;artifacts=$refs}
 }
-function Test-CFV4Review($Read,$ContractRead,$Ref,[string]$Judge,[string]$Target) {
-    $artifacts=Get-CFV4Artifacts $Read $ContractRead.contract;$artifact=Read-CFReference $Read.run_path $Ref
-    if(-not $artifacts.ContainsKey($artifact.kind) -or $artifacts[$artifact.kind].ref.path -cne $Ref.path -or $artifacts[$artifact.kind].ref.sha256 -cne $Ref.sha256){return $false}
-    if($artifact.kind -ceq 'review-packet' -and $artifact.source_digest -cne (Get-CFRunSource $Read.state.binding.worktree_realpath $Read.run_path $Read.state).digest){return $false}
+function Test-CFV4Review($Read,$ContractRead,$Ref,[string]$Judge,[string]$Target,$Artifacts=$null,$Source=$null) {
+    $artifact=Read-CFReference $Read.run_path $Ref
+    if($artifact.kind -ceq 'review-packet'){
+        if($null -eq $Source){$Source=Get-CFRunSource $Read.state.binding.worktree_realpath $Read.run_path $Read.state}
+        if($artifact.source_digest -cne $Source.digest){return $false}
+    }
+    if($null -eq $Artifacts){$Artifacts=Get-CFV4Artifacts $Read $ContractRead.contract -Source $Source}
+    if(-not $Artifacts.ContainsKey($artifact.kind) -or $Artifacts[$artifact.kind].ref.path -cne $Ref.path -or $Artifacts[$artifact.kind].ref.sha256 -cne $Ref.sha256){return $false}
     $events=@($Read.evidence.events|Where-Object {$_.type -ceq 'phase_review' -and $_.target_id -ceq $Target -and $_.judge -ceq $Judge -and $_.artifact_ref.path -ceq $Ref.path -and $_.artifact_ref.sha256 -ceq $Ref.sha256 -and $_.planning_epoch_id -eq $Read.state.planning_epoch_id})
     if($events.Count -eq 0){return $false};$review=$events[-1]
     if($review.verdict -cne 'APPROVED' -or $review.intent_digest -cne (Get-CFIntentDigest $ContractRead.contract) -or $review.policy_digest -cne (Get-CFPolicyDigest $ContractRead.contract)){return $false}
@@ -172,7 +235,7 @@ function Test-CFV4Capture($Read,$ContractRead,$Source,[string]$CheckId,[switch]$
     if($RequireReport -or $def.ContainsKey('report')){if(-not $capture.ContainsKey('quality') -or $capture.quality.status -cne 'PASS' -or -not $capture.quality.ContainsKey('raw_report_ref')){return $false}}
     if(-not (Test-CFV4MutationScope $def $capture)){return $false}
     if(Test-CFCheckHasInputs $def){
-        $inputDigest=Get-CFCheckInputDigest $Read.state.binding.worktree_realpath $def
+        $inputDigest=if($null -ne $InputDigests -and $InputDigests.ContainsKey($CheckId)){$InputDigests[$CheckId]}else{Get-CFCheckInputDigest $Read.state.binding.worktree_realpath $def}
         if(-not $capture.ContainsKey('input_before') -or -not $capture.ContainsKey('input_after') -or $capture.input_before -cne $inputDigest -or $capture.input_after -cne $inputDigest){return $false}
         if($null -ne $InputDigests){$InputDigests[$CheckId]=$inputDigest}
     }
@@ -200,9 +263,19 @@ function Update-CFV4Event([string]$RepoRoot,[string]$RunPath,$Read,$Event,$Copy)
             if($s.status -notin @('ACTIVE','HUMAN_WAIT')){throw 'RUN_NOT_ACTIVE'}
             $a=$Event.artifact;if($a.kind -in @('context','design','qa-plan','implementation-plan') -and $s.preflight_digest){throw 'PLANNING_EPOCH_REQUIRED'}
             if($a.kind -ceq 'review-packet'){
-                $a.evidence_summary=@($contract.checks|ForEach-Object {
-                    $id=$_.id;$caps=@($Read.evidence.checks|Where-Object {$_.check_id -ceq $id});$last=if($caps.Count -gt 0){$caps[-1]}else{$null}
-                    [ordered]@{check_id=$id;status=$(if($null -eq $last){'NOT_RUN'}elseif(Test-CFV4Capture $Read $c $source $id){'PASS'}else{'FAIL'});capture=$last}
+                $captures=Get-CFV4LatestCaptures $Read;$observedInputs=Get-CFMap
+                $a.evidence_summary=@(foreach($check in $contract.checks){
+                    $id=$check.id;$last=if($captures.ContainsKey($id)){$captures[$id]}
+                    $status=if($null -eq $last){'NOT_RUN'}elseif(Test-CFV4Capture $Read $c $source $id -InputDigests $observedInputs){'PASS'}else{'FAIL'}
+                    $summary=[ordered]@{check_id=$id;status=$status;capture=$last}
+                    if($null -ne $last -and (Test-CFCheckHasInputs $check)){
+                        if(-not $observedInputs.ContainsKey($id)){
+                            # A failed capture may have no readable input digest to bind.
+                            try{$observedInputs[$id]=Get-CFCheckInputDigest $RepoRoot $check}catch{}
+                        }
+                        if($observedInputs.ContainsKey($id)){$summary.input_digest=$observedInputs[$id]}
+                    }
+                    $summary
                 })
                 $a.profile_summary=@($contract.quality_profiles|ForEach-Object {Get-CFV4ProfileSummary $Read $c $source $_})
             }
@@ -230,7 +303,7 @@ function Update-CFV4Event([string]$RepoRoot,[string]$RunPath,$Read,$Event,$Copy)
                     $ids[$part.id]=$true
                 }
             }
-            $artifacts=Get-CFV4Artifacts $Read $contract
+            $artifacts=Get-CFV4Artifacts $Read $contract -Source $source
             $allArtifacts=@($Read.evidence.events|Where-Object {$_.type -ceq 'artifact'})
             foreach($previous in $allArtifacts){$old=Read-CFReference $RunPath $previous.artifact_ref;if($old.artifact_id -ceq $a.artifact_id){throw 'ARTIFACT_ID_REUSED'};if($old.kind -ceq $a.kind -and $old.planning_epoch_id -eq $s.planning_epoch_id -and $old.revision -ge $a.revision){throw 'ARTIFACT_REVISION_NOT_INCREASING'}}
             $required=@(switch($a.kind){'context'{};'design'{'context'};'qa-plan'{'design'};'implementation-plan'{'qa-plan'};'qa-recheck'{'qa-plan';'implementation-plan'};'review-packet'{if($contract.workflow.profile -cne 'light'){'qa-recheck'}}})
@@ -239,7 +312,7 @@ function Update-CFV4Event([string]$RepoRoot,[string]$RunPath,$Read,$Event,$Copy)
                 if(@($a.inputs|Where-Object {$_.path -ceq $artifacts[$kind].ref.path -and $_.sha256 -ceq $artifacts[$kind].ref.sha256}).Count -ne 1){throw 'EXACT_INPUT_REQUIRED'}
             }
             foreach($ref in $a.inputs){$input=Read-CFReference $RunPath $ref;if(-not $artifacts.ContainsKey($input.kind) -or $artifacts[$input.kind].ref.path -cne $ref.path -or $artifacts[$input.kind].ref.sha256 -cne $ref.sha256){throw 'FOREIGN_OR_STALE_INPUT'}}
-            if($a.kind -in @('qa-plan','implementation-plan') -and $contract.review_policy.human_design){if(-not $artifacts.ContainsKey('design') -or -not (Test-CFV4Review $Read $c $artifacts.design.ref human design)){throw 'HUMAN_DESIGN_DECISION_REQUIRED'}}
+            if($a.kind -in @('qa-plan','implementation-plan') -and $contract.review_policy.human_design){if(-not $artifacts.ContainsKey('design') -or -not (Test-CFV4Review $Read $c $artifacts.design.ref human design $artifacts $source)){throw 'HUMAN_DESIGN_DECISION_REQUIRED'}}
             if($a.kind -in @('qa-recheck','review-packet')){
                 Assert-CFV4Execution $Read $c
                 if($a.kind -ceq 'qa-recheck'){
@@ -252,6 +325,10 @@ function Update-CFV4Event([string]$RepoRoot,[string]$RunPath,$Read,$Event,$Copy)
                         if($scenario.check_refs.Count -eq 0){foreach($id in $scenario.criterion_refs){if(Test-CFV4CodeCriterion $contract $id){throw 'CODE_SCENARIO_CHECK_REQUIRED'}}}
                     }
                     if($a.payload.dispositions.Count -ne $qa.artifact.payload.scenarios.Count){throw 'QA_DISPOSITION_SET_MISMATCH'}
+                    $captures=Get-CFV4LatestCaptures $Read
+                    $a.evidence_summary=@(foreach($id in (Get-CFV4QACheckIds $qa.artifact)){
+                        [ordered]@{check_id=$id;capture_id=$captures[$id].capture_id}
+                    })
                 }
             }
             if($a.kind -ceq 'qa-plan'){$a.qa_bindings=Get-CFQABindings $contract $a}
@@ -264,7 +341,9 @@ function Update-CFV4Event([string]$RepoRoot,[string]$RunPath,$Read,$Event,$Copy)
             if($Event.judge -cnotin @('human','agent') -or $Event.verdict -cnotin @('APPROVED','REJECTED','UNKNOWN') -or $Event.assurance -cnotin @('manual','verified')){throw 'INVALID_PHASE_REVIEW'}
             if($Event.assurance -ceq 'verified'){throw 'TRUSTED_DECISION_SOURCE_UNAVAILABLE'}
             if($Event.judge -ceq 'human' -and [string]::IsNullOrWhiteSpace([string]$Event.user_decision_ref)){throw 'EXPLICIT_USER_DECISION_REQUIRED'}
-            $artifacts=Get-CFV4Artifacts $Read $contract;$a=Read-CFReference $RunPath $Event.artifact_ref
+            # A negative decision can document stale evidence without approving it.
+            $artifacts=Get-CFV4Artifacts $Read $contract -Source $source -AllowStaleChecks:($Event.verdict -cne 'APPROVED')
+            $a=Read-CFReference $RunPath $Event.artifact_ref
             if(-not $artifacts.ContainsKey($a.kind) -or $artifacts[$a.kind].ref.path -cne $Event.artifact_ref.path -or $artifacts[$a.kind].ref.sha256 -cne $Event.artifact_ref.sha256){throw 'REVIEW_ARTIFACT_STALE'}
             if($Event.target_id -cnotin (@('design','final')+@($contract.criteria|ForEach-Object {$_.id})+@($(if($contract.ContainsKey('phases')){$contract.phases|ForEach-Object {$_.id}})))){throw 'INVALID_REVIEW_TARGET'}
             if($Event.target_id -ceq 'design' -and $a.kind -cne 'design'){throw 'DESIGN_REVIEW_BINDING_REQUIRED'}
@@ -292,7 +371,11 @@ function Update-CFV4Event([string]$RepoRoot,[string]$RunPath,$Read,$Event,$Copy)
             $artifacts=Get-CFV4Artifacts $Read $contract
             foreach($kind in @('context','design','qa-plan','implementation-plan')){if($kind -cin $contract.workflow.required_artifacts -and -not $artifacts.ContainsKey($kind)){throw ('PHASE_PREREQUISITE_MISSING:'+$kind)}}
             if($artifacts.ContainsKey('qa-plan')){
-                $covered=@($artifacts['qa-plan'].artifact.payload.scenarios|ForEach-Object {$_.criterion_refs})
+                $qaPayload=$artifacts['qa-plan'].artifact.payload
+                # A draft assessment can depend on the final quality profiles.
+                # Historical QA plans without an assessment remain usable.
+                if($qaPayload.ContainsKey('mutation_assessment')){Assert-CFV4MutationAssessment $contract $qaPayload}
+                $covered=@($qaPayload.scenarios|ForEach-Object {$_.criterion_refs})
                 foreach($criterion in $contract.criteria){if($criterion.id -cnotin $covered){throw 'QA_CRITERION_SCENARIO_MISSING'}}
             }
             if($contract.review_policy.human_design -and (-not $artifacts.ContainsKey('design') -or -not (Test-CFV4Review $Read $c $artifacts.design.ref human design))){throw 'HUMAN_DESIGN_DECISION_REQUIRED'}
@@ -423,6 +506,7 @@ function Read-CFQualityReportBytes {
             try{$text=$textReader.ReadToEnd()}finally{$textReader.Dispose();$memory.Dispose()}
             $report=ConvertFrom-Json -InputObject $text -AsHashtable -Depth 80
             if($report -isnot [Collections.IDictionary] -or -not $report.ContainsKey('schemaVersion') -or -not $report.ContainsKey('files') -or $report.files -isnot [Collections.IDictionary]){throw 'INVALID_MUTATION_REPORT'}
+            if($report.schemaVersion -isnot [string] -or $report.schemaVersion -cnotmatch '\A[12](\.(0|[1-9][0-9]*)){0,2}\z'){throw 'UNSUPPORTED_MUTATION_REPORT_VERSION'}
             if($RepoRoot){
                 $q.verified_scope=@(Assert-CFMutationReportScope $report $RepoRoot $Scope $WorkingDirectory)
                 $q.scope_verified=$true

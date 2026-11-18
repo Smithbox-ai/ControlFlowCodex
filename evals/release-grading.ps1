@@ -19,25 +19,38 @@ function Get-E2EReleaseCliProbes {
     return @($probes[$Case.id])
 }
 
+function Get-E2EJsonNumberKey([string]$Value) {
+    $mantissa,$exponentText=$Value -csplit '[eE]',2
+    $sign=if($mantissa.StartsWith('-')){'-'}else{''}
+    $integer,$fraction=$mantissa.TrimStart('-').Split('.',2)
+    $digits=($integer+$fraction).TrimStart('0')
+    if($digits.Length -eq 0){return '0'}
+    $significant=$digits.TrimEnd('0')
+    $exponent=if($null -ne $exponentText){[Numerics.BigInteger]::Parse($exponentText,[Globalization.CultureInfo]::InvariantCulture)}else{[Numerics.BigInteger]::Zero}
+    $scale=$exponent+$digits.Length-$significant.Length-([string]$fraction).Length
+    return $sign+$significant+'e'+$scale.ToString([Globalization.CultureInfo]::InvariantCulture)
+}
+
 function Test-E2EJsonValueEqual {
-    param($Actual,$Expected)
-    if($null -eq $Actual -or $null -eq $Expected){return $null -eq $Actual -and $null -eq $Expected}
-    if($Expected -is [Collections.IDictionary]){
-        if($Actual -isnot [Collections.IDictionary] -or $Actual.Count -ne $Expected.Count){return $false}
-        foreach($key in $Expected.Keys){
-            if($key -cnotin $Actual.Keys -or -not (Test-E2EJsonValueEqual $Actual[$key] $Expected[$key])){return $false}
+    param([System.Text.Json.Nodes.JsonNode]$Actual,[System.Text.Json.Nodes.JsonNode]$Expected)
+    if($Expected -is [System.Text.Json.Nodes.JsonObject]){
+        if($Actual -isnot [System.Text.Json.Nodes.JsonObject] -or $Actual.Count -ne $Expected.Count){return $false}
+        foreach($property in $Expected){
+            # An absent key and a JSON null both return null from the indexer.
+            if(-not $Actual.ContainsKey($property.Key) -or -not (Test-E2EJsonValueEqual $Actual[$property.Key] $property.Value)){return $false}
         }
         return $true
     }
-    if($Expected -is [array]){
-        if($Actual -isnot [array] -or $Actual.Count -ne $Expected.Count){return $false}
+    if($Expected -is [System.Text.Json.Nodes.JsonArray]){
+        if($Actual -isnot [System.Text.Json.Nodes.JsonArray] -or $Actual.Count -ne $Expected.Count){return $false}
         for($i=0;$i -lt $Expected.Count;$i++){if(-not (Test-E2EJsonValueEqual $Actual[$i] $Expected[$i])){return $false}}
         return $true
     }
-    if($Expected -is [bool]){return $Actual -is [bool] -and $Actual -eq $Expected}
-    if($Expected -is [string]){return $Actual -is [string] -and $Actual -ceq $Expected}
-    if($Actual -is [bool] -or $Actual -is [string] -or $Actual -is [Collections.IDictionary] -or $Actual -is [array]){return $false}
-    return $Actual -eq $Expected
+    # .NET 8 compares number spellings, while later runtimes compare their values.
+    if($null -ne $Actual -and $null -ne $Expected -and $Actual.GetValueKind() -eq 'Number' -and $Expected.GetValueKind() -eq 'Number'){
+        return (Get-E2EJsonNumberKey $Actual.ToJsonString()) -ceq (Get-E2EJsonNumberKey $Expected.ToJsonString())
+    }
+    return [System.Text.Json.Nodes.JsonNode]::DeepEquals($Actual,$Expected)
 }
 
 function Test-E2EReleaseCli {
@@ -55,8 +68,8 @@ function Test-E2EReleaseCli {
         $matches=$false;$outputHash=$null
         if($collected){
             try{
-                $actual=ConvertFrom-Json -InputObject ([IO.File]::ReadAllText($output)) -AsHashtable -NoEnumerate -ErrorAction Stop
-                $expected=ConvertFrom-Json -InputObject $probe.expected -AsHashtable -NoEnumerate -ErrorAction Stop
+                $actual=[System.Text.Json.Nodes.JsonNode]::Parse([IO.File]::ReadAllText($output))
+                $expected=[System.Text.Json.Nodes.JsonNode]::Parse($probe.expected)
                 $matches=Test-E2EJsonValueEqual $actual $expected
                 $outputHash=(Get-FileHash -LiteralPath $output).Hash.ToLowerInvariant()
             }catch{$collected=$false}
